@@ -156,9 +156,11 @@ auto_test_notify() {
         CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
         [ -n "$CUR_TGT" ] && CURRENT_NODE="$CUR_TGT"
     fi
-    send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Автоматическая проверка системы уведомлений xkeen_rotate.
-Текущая страна: ${CURRENT_CC:-не установлена}, узел: $CURRENT_NODE.
-Уведомления работают корректно."
+    send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Проверка системы уведомлений.
+Текущая страна: ${CURRENT_CC:-не установлена}
+Узел: $CURRENT_NODE
+
+<b>Уведомления работают корректно.</b>
     echo "$CURRENT_TIME" > "$TEST_NOTIFY_FILE"
     log "Автоматическое тестовое уведомление отправлено"
     return 0
@@ -280,8 +282,10 @@ if [ "$TEST_NOTIFY" -eq 1 ]; then
         [ -n "$CUR_TGT" ] && CURRENT_NODE="$CUR_TGT"
     fi
     send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Проверка системы уведомлений xkeen_rotate.
-Текущая страна: ${CURRENT_CC:-не установлена}, узел: $CURRENT_NODE.
-Уведомления работают корректно."
+Текущая страна: ${CURRENT_CC:-не установлена}
+Узел: $CURRENT_NODE
+
+<b>Уведомления работают корректно.</b>
     if [ "$TG_ENABLED" -eq 1 ]; then
         echo "✓ Тестовое уведомление отправлено в топик $TG_TOPIC_ID группы $TG_CHAT_ID"
     else
@@ -326,14 +330,14 @@ if [ -f "$ACTIVE_TARGET" ]; then
     if [ -n "$CUR_TGT" ]; then
         if health_tcp "$CUR_TGT"; then
             if [ "$FORCE_ROTATE" -eq 0 ] && [ -z "$TARGET_COUNTRY" ]; then
-                log "[$CURRENT_CC] Узел $CUR_TGT доступен — ничего не делаем."
+                log "[$CURRENT_CC] Страна $CURRENT_CC доступна — ничего не делаем."
                 exit 0
             else
-                log "[$CURRENT_CC] Узел $CUR_TGT доступен, но запрошена принудительная ротация."
+                log "[$CURRENT_CC] Страна $CURRENT_CC доступна, но запрошена принудительная ротация."
             fi
         else
-            log "[$CURRENT_CC] Узел $CUR_TGT недоступен — пробуем следующую страну."
-            send_telegram "УЗЕЛ НЕДОСТУПЕН" "Текущий узел $CURRENT_CC ($CUR_TGT) не отвечает.
+            log "[$CURRENT_CC] Страна $CURRENT_CC недоступна — пробуем следующую страну."
+            send_telegram "СТРАНА НЕДОСТУПНА" "Страна $CURRENT_CC недоступна.
 Начинаю автоматический поиск альтернативного сервера."
         fi
     else
@@ -384,7 +388,7 @@ for cand in $CANDIDATES; do
 
     log "Проверяем $CC ($NEW_TGT)..."
     if ! health_tcp "$NEW_TGT"; then
-        log "[$CC] Узел $NEW_TGT недоступен — пропускаем."
+        log "[$CC] Страна $CC недоступен — пропускаем."
         continue
     fi
 
@@ -411,7 +415,7 @@ for cand in $CANDIDATES; do
         fi
         exit 0
     else
-        log "[$CC] После рестарта узел $NEW_TGT всё ещё недоступен — пробуем следующего кандидата."
+        log "[$CC] После рестарта страна $CC всё ещё недоступна — пробуем следующего кандидата."
     fi
 done
 
