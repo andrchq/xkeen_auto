@@ -7,7 +7,8 @@ CONFIG_DIR="/opt/etc/xray"
 GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
 USE_DIALOG=0
 DIALOG_CMD=""
-XRAY_RESTARTED=0
+CONFIGS_INSTALLED=0
+SERVER_ACTIVATED=0
 
 GRAY="\033[90m"
 BLUE="\033[94m"
@@ -440,7 +441,7 @@ printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n
 printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 sleep 2
 
-if dialog_yesno "Рекомендуемые настройки Xray" "Установить оптимизированные конфигурации inbound и routing?
+if command -v xkeen >/dev/null 2>&1 && dialog_yesno "Рекомендуемые настройки Xray" "Установить оптимизированные конфигурации inbound и routing?
 
 Преимущества:
 ✓ Блокировка рекламы и аналитики
@@ -478,28 +479,9 @@ if dialog_yesno "Рекомендуемые настройки Xray" "Устан
         log "⚠ Не удалось загрузить 05_routing.json"
     fi
     
-    printf "${GREEN}✓ Конфигурации установлены${RESET}\n"
-    echo ""
-    printf "${BLUE}Перезапускаю Xray для применения изменений...${RESET}\n"
-    echo ""
-    
-    RESTART_LOG="/tmp/xray_restart_$$.log"
-    xkeen -restart > "$RESTART_LOG" 2>&1 &
-    sleep 7
-    
-    if [ -f "$RESTART_LOG" ]; then
-        RESTART_OUTPUT=$(cat "$RESTART_LOG")
-        if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
-            printf "${GREEN}✓ Xray успешно перезапущен с новыми конфигурациями${RESET}\n"
-            log "Xray перезапущен успешно"
-            XRAY_RESTARTED=1
-        else
-            log "Не удалось подтвердить перезапуск Xray"
-        fi
-        rm -f "$RESTART_LOG"
-    else
-        log "Не удалось получить вывод команды xkeen -restart"
-    fi
+    printf "${GREEN}✓ Конфигурации inbound и routing установлены${RESET}\n"
+    printf "${GRAY}   Перезапуск Xray будет выполнен после настройки подписки${RESET}\n"
+    CONFIGS_INSTALLED=1
     sleep 1
 else
     show_header
@@ -564,7 +546,50 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
             log "Активирую сервер..."
             ./xkeen_rotate.sh
             log "✓ Сервер активирован"
+            SERVER_ACTIVATED=1
             sleep 1
+            
+            if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
+                show_header
+                show_section "Перезапуск Xray"
+                printf "${BLUE}Все конфигурации установлены. Перезапускаю Xray...${RESET}\n"
+                echo ""
+                
+                RESTART_LOG="/tmp/xray_restart_$$.log"
+                xkeen -restart > "$RESTART_LOG" 2>&1 &
+                RESTART_PID=$!
+                
+                WAIT_TIME=0
+                while kill -0 "$RESTART_PID" 2>/dev/null; do
+                    if [ "$WAIT_TIME" -ge 10 ]; then
+                        kill "$RESTART_PID" 2>/dev/null || true
+                        printf "${YELLOW}⚠ Таймаут перезапуска (10s)${RESET}\n"
+                        break
+                    fi
+                    sleep 1
+                    WAIT_TIME=$((WAIT_TIME + 1))
+                done
+                
+                wait "$RESTART_PID" 2>/dev/null || true
+                
+                if [ -f "$RESTART_LOG" ]; then
+                    RESTART_OUTPUT=$(cat "$RESTART_LOG")
+                    echo "$RESTART_OUTPUT"
+                    echo ""
+                    
+                    if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+                        printf "${GREEN}${BOLD}✓ Xray успешно перезапущен! Все конфигурации применены.${RESET}\n"
+                        log "Xray перезапущен успешно с новыми конфигурациями"
+                    else
+                        printf "${YELLOW}⚠ Не удалось подтвердить успешный запуск${RESET}\n"
+                        printf "${YELLOW}Проверьте вручную: xkeen -restart${RESET}\n"
+                    fi
+                    rm -f "$RESTART_LOG"
+                else
+                    printf "${YELLOW}⚠ Не удалось получить вывод команды${RESET}\n"
+                fi
+                sleep 2
+            fi
         fi
     else
         show_header
@@ -685,21 +710,3 @@ echo ""
 printf "${BLUE}${BOLD}Используйте команду: prosto${RESET}\n"
 printf "${GRAY}(Если команда не найдена, выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 echo ""
-
-if [ "$XRAY_RESTARTED" -eq 0 ]; then
-    echo ""
-    printf "${RED}${BOLD}╔═══════════════════════════════════════════════════════════════════════════╗${RESET}\n"
-    printf "${RED}${BOLD}║                                                                           ║${RESET}\n"
-    printf "${RED}${BOLD}║                    ⚠️  ВАЖНО: ТРЕБУЕТСЯ ПЕРЕЗАПУСК XRAY  ⚠️                ║${RESET}\n"
-    printf "${RED}${BOLD}║                                                                           ║${RESET}\n"
-    printf "${RED}${BOLD}╚═══════════════════════════════════════════════════════════════════════════╝${RESET}\n"
-    echo ""
-    printf "${YELLOW}${BOLD}Конфигурации были установлены, но не удалось подтвердить перезапуск.${RESET}\n"
-    printf "${YELLOW}${BOLD}Для применения изменений выполните команду:${RESET}\n"
-    echo ""
-    printf "${GREEN}${BOLD}    xkeen -restart${RESET}\n"
-    echo ""
-    printf "${GRAY}После успешного перезапуска вы должны увидеть:${RESET}\n"
-    printf "${GRAY}  \"Прокси-клиент запущен\"${RESET}\n"
-    echo ""
-fi
