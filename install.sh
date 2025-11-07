@@ -520,17 +520,27 @@ if dialog_yesno "Настройка автоматической ротации"
         *) CRON_SCHEDULE="*/5 * * * *" ;;
     esac
     
+    SETUP_AUTOSTART=0
+    if dialog_yesno "Автозапуск" "Настроить автоматический выбор сервера после перезагрузки роутера?
+
+Скрипт будет запускаться через 2 минуты после загрузки."; then
+        SETUP_AUTOSTART=1
+    fi
+    
     TEMP_CRON=$(mktemp)
     crontab -l > "$TEMP_CRON" 2>/dev/null || true
-    grep -v "xkeen_rotate.sh" "$TEMP_CRON" > "$TEMP_CRON.new" || true
+    grep -v "xkeen_rotate.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
     mv "$TEMP_CRON.new" "$TEMP_CRON"
     
     echo "" >> "$TEMP_CRON"
-    echo "# xkeen_rotate - автоматическая ротация прокси" >> "$TEMP_CRON"
     echo "$CRON_SCHEDULE $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
     
     if [ -n "$SUBSCRIPTION_URL" ]; then
         echo "0 3 * * * $INSTALL_DIR/xkeen_rotate.sh --sync-url=\"$SUBSCRIPTION_URL\" >/dev/null 2>&1" >> "$TEMP_CRON"
+    fi
+    
+    if [ "$SETUP_AUTOSTART" -eq 1 ]; then
+        echo "@reboot sleep 120 && $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
     fi
     
     crontab "$TEMP_CRON"
@@ -538,44 +548,16 @@ if dialog_yesno "Настройка автоматической ротации"
     /etc/init.d/cron restart >/dev/null 2>&1 || true
     
     show_header
-    show_section "Автоматическая ротация настроена"
+    show_section "Настройка завершена"
     log "✓ Автоматическая ротация настроена"
+    if [ "$SETUP_AUTOSTART" -eq 1 ]; then
+        log "✓ Автозапуск настроен через cron (@reboot)"
+    fi
     sleep 1
 else
     show_header
     show_section "Cron настройка пропущена"
     log "Пропущено (можно настроить позже: crontab -e)"
-    sleep 1
-fi
-
-if dialog_yesno "Автозапуск" "Настроить автоматический выбор сервера после перезагрузки роутера?
-
-Скрипт будет запускаться через 2 минуты после загрузки."; then
-    
-    TEMP_CRON=$(mktemp)
-    crontab -l > "$TEMP_CRON" 2>/dev/null || true
-    
-    if grep -q "@reboot.*xkeen_rotate.sh" "$TEMP_CRON"; then
-        show_header
-        show_section "Автозапуск уже настроен"
-        log "✓ Автозапуск уже настроен в cron"
-        rm -f "$TEMP_CRON"
-    else
-        grep -v "xkeen_rotate.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
-        mv "$TEMP_CRON.new" "$TEMP_CRON"
-        
-        echo "" >> "$TEMP_CRON"
-        echo "# xkeen_rotate - автозапуск после перезагрузки" >> "$TEMP_CRON"
-        echo "@reboot sleep 120 && $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
-        
-        crontab "$TEMP_CRON"
-        rm -f "$TEMP_CRON"
-        
-        show_header
-        show_section "Автозапуск настроен"
-        log "✓ Автозапуск настроен через cron (@reboot)"
-        printf "${BLUE}   Скрипт запустится через 2 минуты после загрузки роутера${RESET}\n"
-    fi
     sleep 1
 fi
 
