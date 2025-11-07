@@ -482,19 +482,46 @@ if dialog_yesno "Рекомендуемые настройки Xray" "Устан
     printf "${BLUE}Перезапускаю Xray для применения изменений...${RESET}\n"
     echo ""
     
-    RESTART_OUTPUT=$(xkeen -restart 2>&1)
-    echo "$RESTART_OUTPUT"
-    echo ""
+    RESTART_TEMP=$(mktemp)
+    xkeen -restart > "$RESTART_TEMP" 2>&1 &
+    RESTART_PID=$!
     
-    if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
-        printf "${GREEN}✓ Xray успешно перезапущен с новыми конфигурациями${RESET}\n"
-        log "Xray перезапущен успешно"
+    TIMEOUT=30
+    ELAPSED=0
+    while kill -0 "$RESTART_PID" 2>/dev/null; do
+        if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+            kill "$RESTART_PID" 2>/dev/null
+            wait "$RESTART_PID" 2>/dev/null
+            printf "${RED}✗ Таймаут перезапуска Xray (${TIMEOUT}s)${RESET}\n"
+            printf "${YELLOW}Попробуйте перезапустить вручную: xkeen -restart${RESET}\n"
+            rm -f "$RESTART_TEMP"
+            log "Таймаут перезапуска Xray"
+            sleep 2
+            break
+        fi
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
+    done
+    
+    if kill -0 "$RESTART_PID" 2>/dev/null; then
+        :
     else
-        printf "${RED}✗ Ошибка перезапуска Xray${RESET}\n"
-        printf "${YELLOW}Проверьте конфигурации вручную: xkeen -restart${RESET}\n"
-        log "Ошибка перезапуска Xray"
+        wait "$RESTART_PID" 2>/dev/null
+        RESTART_OUTPUT=$(cat "$RESTART_TEMP")
+        echo "$RESTART_OUTPUT"
+        echo ""
+        
+        if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+            printf "${GREEN}✓ Xray успешно перезапущен с новыми конфигурациями${RESET}\n"
+            log "Xray перезапущен успешно"
+        else
+            printf "${YELLOW}⚠ Не удалось подтвердить успешный запуск${RESET}\n"
+            printf "${YELLOW}Проверьте статус вручную: xkeen -restart${RESET}\n"
+            log "Неопределенный статус перезапуска Xray"
+        fi
+        rm -f "$RESTART_TEMP"
+        sleep 2
     fi
-    sleep 2
 else
     show_header
     show_section "Конфигурации пропущены"
