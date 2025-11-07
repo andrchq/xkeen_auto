@@ -7,7 +7,7 @@ set -e
 
 INSTALL_DIR="/opt/root/scripts"
 CONFIG_DIR="/opt/etc/xray"
-GITHUB_RAW="https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main"
+GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
 
 clear
 echo "╔══════════════════════════════════════════════════════════════════════════════════════╗"

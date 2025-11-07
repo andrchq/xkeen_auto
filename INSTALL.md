@@ -11,13 +11,13 @@
 Установка одной командой на роутере:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh | sh
 ```
 
 или
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh | sh
 ```
 
 Установщик выполнит:
@@ -60,7 +60,7 @@ logread | grep xkeen_rotate | tail -20
 
 Для обновления до новой версии просто запустите установку снова:
 ```bash
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh | sh
 ```
 
 Установщик обновит скрипты, сохранив ваши настройки.
@@ -88,5 +88,5 @@ rm -rf /opt/etc/xray/backups
 
 Полная документация: [README.md](README.md)
 
-Проблемы и вопросы: [GitHub Issues](https://github.com/YOUR_USERNAME/xkeen_rotate/issues)
+Проблемы и вопросы: [GitHub Issues](https://github.com/andrchq/xkeen_auto/issues)
 

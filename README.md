@@ -12,13 +12,13 @@
 Установка одной командой:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh | sh
 ```
 
 или
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh | sh
 ```
 
 ## ✨ Возможности
@@ -53,8 +53,8 @@ mkdir -p /opt/etc/xray/backups
 
 # 2. Скачать скрипты
 cd /opt/root/scripts
-wget https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/xkeen_rotate.sh
-wget https://raw.githubusercontent.com/YOUR_USERNAME/xkeen_rotate/main/xkeen_sync.sh
+wget https://raw.githubusercontent.com/andrchq/xkeen_auto/main/xkeen_rotate.sh
+wget https://raw.githubusercontent.com/andrchq/xkeen_auto/main/xkeen_sync.sh
 
 # 3. Установить права
 chmod +x xkeen_rotate.sh xkeen_sync.sh
@@ -234,5 +234,5 @@ MIT
 Официальный продукт команды 🤲🏻 простовпн  
 Создан для обеспечения стабильности соединения клиентов
 
-GitHub: [github.com/YOUR_USERNAME/xkeen_rotate](https://github.com/YOUR_USERNAME/xkeen_rotate)
+GitHub: [github.com/andrchq/xkeen_auto](https://github.com/andrchq/xkeen_auto)
 
