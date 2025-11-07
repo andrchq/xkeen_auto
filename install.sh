@@ -8,30 +8,71 @@ GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
 USE_DIALOG=0
 DIALOG_CMD=""
 
-check_dialog() {
+GRAY="\033[90m"
+BLUE="\033[94m"
+GREEN="\033[92m"
+YELLOW="\033[93m"
+RED="\033[91m"
+RESET="\033[0m"
+BOLD="\033[1m"
+
+check_and_install_whiptail() {
     if command -v whiptail >/dev/null 2>&1; then
         DIALOG_CMD="whiptail"
         USE_DIALOG=1
-    elif command -v dialog >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    if command -v dialog >/dev/null 2>&1; then
         DIALOG_CMD="dialog"
         USE_DIALOG=1
+        return 0
+    fi
+    
+    echo ""
+    printf "${YELLOW}⚡ Устанавливаю whiptail для графического интерфейса...${RESET}\n"
+    echo ""
+    
+    if command -v opkg >/dev/null 2>&1; then
+        opkg update >/dev/null 2>&1
+        if opkg install whiptail >/dev/null 2>&1; then
+            DIALOG_CMD="whiptail"
+            USE_DIALOG=1
+            printf "${GREEN}✓ whiptail установлен${RESET}\n"
+            sleep 1
+            
+            printf "${BLUE}Перезапускаю установщик с графическим интерфейсом...${RESET}\n"
+            sleep 2
+            exec "$0" "$@"
+        else
+            printf "${YELLOW}⚠ Не удалось установить whiptail, продолжаю в текстовом режиме${RESET}\n"
+            sleep 2
+        fi
     fi
 }
 
 show_header() {
     clear
-    echo "╔══════════════════════════════════════════════════════════════════════════════════════╗"
-    echo "║                                  🤲🏻 простовпн                                        ║"
-    echo "╚══════════════════════════════════════════════════════════════════════════════════════╝"
+    printf "${GRAY}╔══════════════════════════════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${GRAY}║${RESET}${BLUE}${BOLD}                                    простовпн                                          ${RESET}${GRAY}║${RESET}\n"
+    printf "${GRAY}╚══════════════════════════════════════════════════════════════════════════════════════╝${RESET}\n"
+    echo ""
+}
+
+show_section() {
+    TITLE="$1"
+    printf "${GRAY}╔════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${GRAY}║${RESET} ${BLUE}простовпн | ${BOLD}${TITLE}${RESET}$(printf '%*s' $((57 - ${#TITLE})) '')${GRAY}║${RESET}\n"
+    printf "${GRAY}╚════════════════════════════════════════════════════════════╝${RESET}\n"
     echo ""
 }
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    printf "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] $*${RESET}\n"
 }
 
 error() {
-    echo "[ОШИБКА] $*" >&2
+    printf "${RED}[ОШИБКА] $*${RESET}\n" >&2
     exit 1
 }
 
@@ -39,14 +80,13 @@ dialog_msgbox() {
     TITLE="$1"
     MSG="$2"
     if [ "$USE_DIALOG" -eq 1 ]; then
-        $DIALOG_CMD --title "🤲🏻 простовпн" --msgbox "$MSG" 15 70
+        $DIALOG_CMD --title "простовпн" --msgbox "$MSG" 15 70
     else
         show_header
-        echo "$TITLE"
-        echo ""
+        show_section "$TITLE"
         echo "$MSG"
         echo ""
-        printf "Нажмите Enter для продолжения..."
+        printf "${YELLOW}Нажмите Enter для продолжения...${RESET}"
         read -r dummy
     fi
 }
@@ -55,15 +95,14 @@ dialog_yesno() {
     TITLE="$1"
     MSG="$2"
     if [ "$USE_DIALOG" -eq 1 ]; then
-        $DIALOG_CMD --title "🤲🏻 простовпн" --yesno "$MSG" 15 70
+        $DIALOG_CMD --title "простовпн" --yesno "$MSG" 15 70
         return $?
     else
         show_header
-        echo "$TITLE"
-        echo ""
+        show_section "$TITLE"
         echo "$MSG"
         echo ""
-        printf "Ваш выбор (y/n): "
+        printf "${BLUE}Ваш выбор (y/n): ${RESET}"
         read -r answer
         [ "$answer" = "y" ] || [ "$answer" = "Y" ]
         return $?
@@ -75,15 +114,14 @@ dialog_inputbox() {
     MSG="$2"
     DEFAULT="$3"
     if [ "$USE_DIALOG" -eq 1 ]; then
-        RESULT=$($DIALOG_CMD --title "🤲🏻 простовпн" --inputbox "$MSG" 15 70 "$DEFAULT" 3>&1 1>&2 2>&3)
+        RESULT=$($DIALOG_CMD --title "простовпн" --inputbox "$MSG" 15 70 "$DEFAULT" 3>&1 1>&2 2>&3)
         echo "$RESULT"
     else
         show_header
-        echo "$TITLE"
-        echo ""
+        show_section "$TITLE"
         echo "$MSG"
         echo ""
-        printf "> "
+        printf "${BLUE}> ${RESET}"
         read -r result
         echo "$result"
     fi
@@ -94,45 +132,203 @@ dialog_menu() {
     MSG="$2"
     shift 2
     if [ "$USE_DIALOG" -eq 1 ]; then
-        RESULT=$($DIALOG_CMD --title "🤲🏻 простовпн" --menu "$MSG" 20 70 10 "$@" 3>&1 1>&2 2>&3)
+        RESULT=$($DIALOG_CMD --title "простовпн" --menu "$MSG" 20 70 10 "$@" 3>&1 1>&2 2>&3)
         echo "$RESULT"
     else
         show_header
-        echo "$TITLE"
-        echo ""
+        show_section "$TITLE"
         echo "$MSG"
         echo ""
         i=1
         while [ $# -gt 0 ]; do
-            echo "  $1) $2"
+            printf "${BLUE}  $1)${RESET} $2\n"
             shift 2
         done
         echo ""
-        printf "Выберите вариант: "
+        printf "${BLUE}Выберите вариант: ${RESET}"
         read -r result
         echo "$result"
     fi
 }
 
-check_dialog
+create_prosto_command() {
+    cat > /usr/bin/prosto << 'EOFPROSTO'
+#!/bin/sh
+
+SCRIPT_DIR="/opt/root/scripts"
+GRAY="\033[90m"
+BLUE="\033[94m"
+GREEN="\033[92m"
+RESET="\033[0m"
+BOLD="\033[1m"
+
+show_header() {
+    clear
+    printf "${GRAY}╔══════════════════════════════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${GRAY}║${RESET}${BLUE}${BOLD}                                    простовпн                                          ${RESET}${GRAY}║${RESET}\n"
+    printf "${GRAY}╚══════════════════════════════════════════════════════════════════════════════════════╝${RESET}\n"
+    echo ""
+}
+
+show_menu() {
+    show_header
+    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET}\n\n"
+    printf "${BLUE}1)${RESET} Показать статус серверов\n"
+    printf "${BLUE}2)${RESET} Принудительная ротация\n"
+    printf "${BLUE}3)${RESET} Тестовое уведомление\n"
+    printf "${BLUE}4)${RESET} Синхронизация подписки\n"
+    printf "${BLUE}5)${RESET} Очистка технических серверов\n"
+    printf "${BLUE}6)${RESET} Просмотр логов (последние 30 строк)\n"
+    printf "${BLUE}7)${RESET} Просмотр логов (в реальном времени)\n"
+    printf "${BLUE}8)${RESET} Редактировать настройки\n"
+    printf "${BLUE}9)${RESET} О системе\n"
+    printf "${BLUE}0)${RESET} Выход\n"
+    echo ""
+    printf "${BLUE}Выберите действие: ${RESET}"
+}
+
+if [ "$1" = "status" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --status
+    exit 0
+elif [ "$1" = "force" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --force
+    exit 0
+elif [ "$1" = "test" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --test-notify
+    exit 0
+elif [ "$1" = "sync" ]; then
+    if [ -n "$2" ]; then
+        $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$2"
+    else
+        echo "Использование: prosto sync <URL>"
+    fi
+    exit 0
+elif [ "$1" = "cleanup" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --cleanup
+    exit 0
+elif [ "$1" = "logs" ]; then
+    logread | grep xkeen_rotate | tail -30
+    exit 0
+elif [ "$1" = "logsf" ]; then
+    logread -f | grep xkeen_rotate
+    exit 0
+elif [ "$1" = "edit" ]; then
+    vi $SCRIPT_DIR/xkeen_rotate.sh
+    exit 0
+elif [ -n "$1" ]; then
+    echo "Неизвестная команда: $1"
+    echo ""
+    echo "Доступные команды:"
+    echo "  prosto              - интерактивное меню"
+    echo "  prosto status       - показать статус"
+    echo "  prosto force        - принудительная ротация"
+    echo "  prosto test         - тестовое уведомление"
+    echo "  prosto sync <URL>   - синхронизация подписки"
+    echo "  prosto cleanup      - очистка технических серверов"
+    echo "  prosto logs         - последние 30 строк логов"
+    echo "  prosto logsf        - логи в реальном времени"
+    echo "  prosto edit         - редактировать настройки"
+    exit 1
+fi
+
+while true; do
+    show_menu
+    read -r choice
+    
+    case $choice in
+        1)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --status
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        2)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --force
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        3)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --test-notify
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        4)
+            show_header
+            printf "${BLUE}Введите URL подписки: ${RESET}"
+            read -r url
+            if [ -n "$url" ]; then
+                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+            fi
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        5)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --cleanup
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        6)
+            show_header
+            logread | grep xkeen_rotate | tail -30
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        7)
+            show_header
+            printf "${GREEN}Логи в реальном времени (Ctrl+C для выхода)${RESET}\n\n"
+            logread -f | grep xkeen_rotate
+            ;;
+        8)
+            vi $SCRIPT_DIR/xkeen_rotate.sh
+            ;;
+        9)
+            show_header
+            printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
+            printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
+            printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
+            printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+            printf "${GREEN}GitHub:${RESET} https://github.com/andrchq/xkeen_auto\n"
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        0)
+            show_header
+            printf "${GREEN}До свидания!${RESET}\n\n"
+            exit 0
+            ;;
+        *)
+            show_header
+            printf "${YELLOW}Неверный выбор. Попробуйте снова.${RESET}\n"
+            sleep 2
+            ;;
+    esac
+done
+EOFPROSTO
+
+    chmod +x /usr/bin/prosto
+}
+
+check_and_install_whiptail
 
 show_header
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║         xkeen_rotate - Установка                          ║"
-echo "║  Автоматическая ротация прокси-серверов для Xray/Xkeen    ║"
-echo "╚════════════════════════════════════════════════════════════╝"
+printf "${BLUE}${BOLD}xkeen_rotate - Установка${RESET}\n"
+printf "${BLUE}Автоматическая ротация прокси-серверов для Xray/Xkeen${RESET}\n"
 echo ""
-echo "Разработано командой 🤲🏻 простовпн"
-echo "Для клиентов https://t.me/prstabot"
+printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n"
+printf "Для клиентов ${BLUE}https://t.me/prstabot${RESET}\n"
 echo ""
-echo "💬 Служба поддержки: https://t.me/prsta_helpbot"
+printf "${GREEN}💬 Служба поддержки:${RESET} https://t.me/prsta_helpbot\n"
 echo ""
-
-if [ "$USE_DIALOG" -eq 0 ]; then
-    echo "💡 Для графического интерфейса установите whiptail:"
-    echo "   opkg update && opkg install whiptail"
-    echo ""
-fi
 
 log "Начинаю установку..."
 sleep 2
@@ -142,8 +338,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 show_header
-log "Проверка зависимостей..."
-echo ""
+show_section "Проверка зависимостей"
 
 MISSING_DEPS=""
 
@@ -180,8 +375,7 @@ log "✓ Все зависимости установлены"
 sleep 1
 
 show_header
-log "Создаю директории..."
-echo ""
+show_section "Создание директорий"
 
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$CONFIG_DIR/outbounds_available"
@@ -192,8 +386,7 @@ log "✓ Директории созданы"
 sleep 1
 
 show_header
-log "Загружаю скрипты с GitHub..."
-echo ""
+show_section "Загрузка скриптов с GitHub"
 
 if ! curl -sSL "$GITHUB_RAW/xkeen_rotate.sh" -o "$INSTALL_DIR/xkeen_rotate.sh"; then
     error "Не удалось скачать xkeen_rotate.sh"
@@ -207,13 +400,21 @@ log "✓ Скрипты загружены"
 sleep 1
 
 show_header
-log "Устанавливаю права на выполнение..."
-echo ""
+show_section "Установка прав доступа"
 
 chmod +x "$INSTALL_DIR/xkeen_rotate.sh"
 chmod +x "$INSTALL_DIR/xkeen_sync.sh"
 
 log "✓ Права установлены"
+sleep 1
+
+show_header
+show_section "Установка команды prosto"
+
+create_prosto_command
+
+log "✓ Команда 'prosto' установлена"
+printf "${BLUE}   Теперь вы можете использовать команду: ${BOLD}prosto${RESET}\n"
 sleep 1
 
 if dialog_yesno "Настройка Telegram уведомлений" "Для получения ID топика напишите администратору в @prsta_helpbot
@@ -228,13 +429,14 @@ if dialog_yesno "Настройка Telegram уведомлений" "Для п�
         sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_rotate.sh"
         
         show_header
+        show_section "Telegram настроен"
         log "✓ Telegram настроен"
         sleep 1
         
         if dialog_yesno "Тестовое уведомление" "Отправить тестовое уведомление в Telegram для проверки настроек?"; then
             show_header
+            show_section "Отправка тестового уведомления"
             log "Отправляю тестовое уведомление..."
-            echo ""
             cd "$INSTALL_DIR"
             ./xkeen_rotate.sh --test-notify
             sleep 2
@@ -242,7 +444,8 @@ if dialog_yesno "Настройка Telegram уведомлений" "Для п�
     fi
 else
     show_header
-    log "Пропускаю настройку Telegram (можно настроить позже в $INSTALL_DIR/xkeen_rotate.sh)"
+    show_section "Telegram настройка пропущена"
+    log "Пропущено (можно настроить позже: prosto edit)"
     sleep 1
 fi
 
@@ -250,8 +453,8 @@ SUBSCRIPTION_URL=$(dialog_inputbox "Настройка подписки" "Вве
 
 if [ -n "$SUBSCRIPTION_URL" ]; then
     show_header
+    show_section "Загрузка серверов из подписки"
     log "Загружаю серверы из подписки..."
-    echo ""
     
     cd "$INSTALL_DIR"
     if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
@@ -259,23 +462,23 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
         sleep 1
         
         show_header
-        echo "Доступные серверы:"
-        echo ""
+        show_section "Доступные серверы"
         ./xkeen_rotate.sh --status
         
         sleep 2
         
         if dialog_yesno "Активация сервера" "Активировать первый доступный сервер сейчас?"; then
             show_header
+            show_section "Активация сервера"
             log "Активирую сервер..."
-            echo ""
             ./xkeen_rotate.sh
             log "✓ Сервер активирован"
             sleep 1
         fi
     else
         show_header
-        log "⚠ Не удалось загрузить подписку (настройте позже)"
+        show_section "Ошибка загрузки подписки"
+        printf "${YELLOW}⚠ Не удалось загрузить подписку (настройте позже командой: prosto)${RESET}\n"
         sleep 2
     fi
 fi
@@ -312,11 +515,13 @@ if dialog_yesno "Настройка автоматической ротации"
     /etc/init.d/cron restart >/dev/null 2>&1 || true
     
     show_header
+    show_section "Автоматическая ротация настроена"
     log "✓ Автоматическая ротация настроена"
     sleep 1
 else
     show_header
-    log "Пропускаю настройку cron (можно настроить позже командой: crontab -e)"
+    show_section "Cron настройка пропущена"
+    log "Пропущено (можно настроить позже: crontab -e)"
     sleep 1
 fi
 
@@ -325,51 +530,59 @@ if dialog_yesno "Автозапуск" "Настроить автоматиче�
         if ! grep -q "xkeen_rotate.sh" /etc/rc.local; then
             sed -i '/exit 0/i sleep 60 \&\& '"$INSTALL_DIR"'/xkeen_rotate.sh \&' /etc/rc.local
             show_header
+            show_section "Автозапуск настроен"
             log "✓ Автозапуск настроен"
         else
             show_header
+            show_section "Автозапуск уже настроен"
             log "✓ Автозапуск уже настроен"
         fi
     else
         show_header
-        log "⚠ Файл /etc/rc.local не найден (настройте автозапуск вручную)"
+        show_section "Автозапуск недоступен"
+        printf "${YELLOW}⚠ Файл /etc/rc.local не найден (настройте автозапуск вручную)${RESET}\n"
     fi
     sleep 1
 fi
 
 if [ "$USE_DIALOG" -eq 1 ]; then
-    $DIALOG_CMD --title "🤲🏻 простовпн" --msgbox "Установка успешно завершена!
+    $DIALOG_CMD --title "простовпн" --msgbox "╔════════════════════════════════════════════════════════════╗
+║              Установка успешно завершена!                  ║
+╚════════════════════════════════════════════════════════════╝
 
 Основные команды:
-• $INSTALL_DIR/xkeen_rotate.sh --status
-• $INSTALL_DIR/xkeen_rotate.sh --force
-• $INSTALL_DIR/xkeen_rotate.sh --test-notify
+• prosto                   # Интерактивное меню
+• prosto status            # Показать статус серверов
+• prosto force             # Принудительная ротация
+• prosto test              # Тест Telegram уведомлений
+• prosto logs              # Просмотр логов
 
-Просмотр логов:
-• logread | grep xkeen_rotate | tail -20
+Система автоматической ротации активна!
 
-Настройки: $INSTALL_DIR/xkeen_rotate.sh (строки 3-22)
-
-Система автоматической ротации активна!" 20 70
+════════════════════════════════════════════════════════════
+Покупка: https://t.me/prstabot
+Поддержка: https://t.me/prsta_helpbot
+GitHub: https://github.com/andrchq/xkeen_auto
+════════════════════════════════════════════════════════════" 25 70
 else
     show_header
-    echo "╔════════════════════════════════════════════════════════════╗"
-    echo "║                 Установка завершена!                       ║"
-    echo "╚════════════════════════════════════════════════════════════╝"
-    echo ""
+    show_section "Установка завершена!"
     log "✓ Установка успешно завершена!"
     echo ""
-    echo "Основные команды:"
-    echo "  $INSTALL_DIR/xkeen_rotate.sh --status        # Показать статус серверов"
-    echo "  $INSTALL_DIR/xkeen_rotate.sh --force         # Принудительная ротация"
-    echo "  $INSTALL_DIR/xkeen_rotate.sh --test-notify   # Тест Telegram"
-    echo "  $INSTALL_DIR/xkeen_rotate.sh --cleanup       # Очистка технических серверов"
+    printf "${BLUE}${BOLD}Основные команды:${RESET}\n"
+    printf "${BLUE}  prosto${RESET}                   # Интерактивное меню\n"
+    printf "${BLUE}  prosto status${RESET}            # Показать статус серверов\n"
+    printf "${BLUE}  prosto force${RESET}             # Принудительная ротация\n"
+    printf "${BLUE}  prosto test${RESET}              # Тест Telegram уведомлений\n"
+    printf "${BLUE}  prosto logs${RESET}              # Просмотр логов\n"
+    printf "${BLUE}  prosto cleanup${RESET}           # Очистка технических серверов\n"
     echo ""
-    echo "Просмотр логов:"
-    echo "  logread | grep xkeen_rotate | tail -20"
-    echo "  logread -f | grep xkeen_rotate"
+    printf "${GREEN}Система автоматической ротации активна!${RESET}\n"
     echo ""
-    echo "Настройки находятся в: $INSTALL_DIR/xkeen_rotate.sh (строки 3-22)"
+    printf "${GRAY}════════════════════════════════════════════════════════════${RESET}\n"
+    printf "${BLUE}Покупка:${RESET} https://t.me/prstabot\n"
+    printf "${BLUE}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+    printf "${GRAY}════════════════════════════════════════════════════════════${RESET}\n"
     echo ""
 fi
 
@@ -378,10 +591,13 @@ if dialog_yesno "Удаление установщика" "Удалить уст
         INSTALLER_PATH="$0"
         rm -f "$INSTALLER_PATH"
         show_header
+        show_section "Установщик удалён"
         log "✓ Установочный скрипт удалён"
     fi
 fi
 
 show_header
-log "Готово! Система автоматической ротации активна."
+printf "${GREEN}${BOLD}Готово! Система автоматической ротации активна.${RESET}\n"
+echo ""
+printf "${BLUE}Используйте команду: ${BOLD}prosto${RESET}\n"
 echo ""

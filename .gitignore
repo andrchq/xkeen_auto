@@ -1,25 +1,23 @@
-# Временные файлы
-*.tmp
-*.log
-*.bak
-*~
-
-# Конфиденциальные данные
-cookies.json
-*_private*
-.env
-
-# Системные файлы
+# OS
 .DS_Store
 Thumbs.db
 
-# IDE
+# Editor
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# Тестовые файлы
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*.old
+
+# Test files
 test/
-temp/
+*.test
 
+# Logs
+*.log

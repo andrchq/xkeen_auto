@@ -1,0 +1,162 @@
+#!/bin/sh
+
+SCRIPT_DIR="/opt/root/scripts"
+GRAY="\033[90m"
+BLUE="\033[94m"
+GREEN="\033[92m"
+YELLOW="\033[93m"
+RESET="\033[0m"
+BOLD="\033[1m"
+
+show_header() {
+    clear
+    printf "${GRAY}╔══════════════════════════════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${GRAY}║${RESET}${BLUE}${BOLD}                                    простовпн                                          ${RESET}${GRAY}║${RESET}\n"
+    printf "${GRAY}╚══════════════════════════════════════════════════════════════════════════════════════╝${RESET}\n"
+    echo ""
+}
+
+show_menu() {
+    show_header
+    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET}\n\n"
+    printf "${BLUE}1)${RESET} Показать статус серверов\n"
+    printf "${BLUE}2)${RESET} Принудительная ротация\n"
+    printf "${BLUE}3)${RESET} Тестовое уведомление\n"
+    printf "${BLUE}4)${RESET} Синхронизация подписки\n"
+    printf "${BLUE}5)${RESET} Очистка технических серверов\n"
+    printf "${BLUE}6)${RESET} Просмотр логов (последние 30 строк)\n"
+    printf "${BLUE}7)${RESET} Просмотр логов (в реальном времени)\n"
+    printf "${BLUE}8)${RESET} Редактировать настройки\n"
+    printf "${BLUE}9)${RESET} О системе\n"
+    printf "${BLUE}0)${RESET} Выход\n"
+    echo ""
+    printf "${BLUE}Выберите действие: ${RESET}"
+}
+
+if [ "$1" = "status" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --status
+    exit 0
+elif [ "$1" = "force" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --force
+    exit 0
+elif [ "$1" = "test" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --test-notify
+    exit 0
+elif [ "$1" = "sync" ]; then
+    if [ -n "$2" ]; then
+        $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$2"
+    else
+        echo "Использование: prosto sync <URL>"
+    fi
+    exit 0
+elif [ "$1" = "cleanup" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --cleanup
+    exit 0
+elif [ "$1" = "logs" ]; then
+    logread | grep xkeen_rotate | tail -30
+    exit 0
+elif [ "$1" = "logsf" ]; then
+    logread -f | grep xkeen_rotate
+    exit 0
+elif [ "$1" = "edit" ]; then
+    vi $SCRIPT_DIR/xkeen_rotate.sh
+    exit 0
+elif [ -n "$1" ]; then
+    echo "Неизвестная команда: $1"
+    echo ""
+    echo "Доступные команды:"
+    echo "  prosto              - интерактивное меню"
+    echo "  prosto status       - показать статус"
+    echo "  prosto force        - принудительная ротация"
+    echo "  prosto test         - тестовое уведомление"
+    echo "  prosto sync <URL>   - синхронизация подписки"
+    echo "  prosto cleanup      - очистка технических серверов"
+    echo "  prosto logs         - последние 30 строк логов"
+    echo "  prosto logsf        - логи в реальном времени"
+    echo "  prosto edit         - редактировать настройки"
+    exit 1
+fi
+
+while true; do
+    show_menu
+    read -r choice
+    
+    case $choice in
+        1)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --status
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        2)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --force
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        3)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --test-notify
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        4)
+            show_header
+            printf "${BLUE}Введите URL подписки: ${RESET}"
+            read -r url
+            if [ -n "$url" ]; then
+                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+            fi
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        5)
+            show_header
+            $SCRIPT_DIR/xkeen_rotate.sh --cleanup
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        6)
+            show_header
+            logread | grep xkeen_rotate | tail -30
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        7)
+            show_header
+            printf "${GREEN}Логи в реальном времени (Ctrl+C для выхода)${RESET}\n\n"
+            logread -f | grep xkeen_rotate
+            ;;
+        8)
+            vi $SCRIPT_DIR/xkeen_rotate.sh
+            ;;
+        9)
+            show_header
+            printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
+            printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
+            printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
+            printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+            printf "${GREEN}GitHub:${RESET} https://github.com/andrchq/xkeen_auto\n"
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        0)
+            show_header
+            printf "${GREEN}До свидания!${RESET}\n\n"
+            exit 0
+            ;;
+        *)
+            show_header
+            printf "${YELLOW}Неверный выбор. Попробуйте снова.${RESET}\n"
+            sleep 2
+            ;;
+    esac
+done
+
