@@ -158,7 +158,7 @@ auto_test_notify() {
     fi
     send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Проверка системы уведомлений.
 Текущая страна: ${CURRENT_CC:-не установлена}
-Страна: $CURRENT_NODE
+Узел: $CURRENT_NODE
 
 <b>Уведомления работают корректно.</b>"
     echo "$CURRENT_TIME" > "$TEST_NOTIFY_FILE"
@@ -283,7 +283,7 @@ if [ "$TEST_NOTIFY" -eq 1 ]; then
     fi
     send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Проверка системы уведомлений xkeen_rotate.
 Текущая страна: ${CURRENT_CC:-не установлена}
-Страна: $CURRENT_NODE
+Узел: $CURRENT_NODE
 
 <b>Уведомления работают корректно.</b>"
     if [ "$TG_ENABLED" -eq 1 ]; then
@@ -330,14 +330,14 @@ if [ -f "$ACTIVE_TARGET" ]; then
     if [ -n "$CUR_TGT" ]; then
         if health_tcp "$CUR_TGT"; then
             if [ "$FORCE_ROTATE" -eq 0 ] && [ -z "$TARGET_COUNTRY" ]; then
-                log "[$CURRENT_CC] Страна $CURRENT_CC доступна — ничего не делаем."
+                log "[$CURRENT_CC] Узел $CUR_TGT доступен — ничего не делаем."
                 exit 0
             else
-                log "[$CURRENT_CC] Страна $CURRENT_CC доступна, но запрошена принудительная ротация."
+                log "[$CURRENT_CC] Узел $CUR_TGT доступен, но запрошена принудительная ротация."
             fi
         else
-            log "[$CURRENT_CC] Страна $CURRENT_CC недоступна — пробуем следующую страну."
-            send_telegram "СТРАНА НЕДОСТУПНА" "Страна $CURRENT_CC недоступна.
+            log "[$CURRENT_CC] Узел $CUR_TGT недоступен — пробуем следующую страну."
+            send_telegram "УЗЕЛ НЕДОСТУПЕН" "Текущий узел $CURRENT_CC ($CUR_TGT) не отвечает.
 Начинаю автоматический поиск альтернативного сервера."
         fi
     else
@@ -388,7 +388,7 @@ for cand in $CANDIDATES; do
 
     log "Проверяем $CC ($NEW_TGT)..."
     if ! health_tcp "$NEW_TGT"; then
-        log "[$CC] Страна $CC недоступен — пропускаем."
+        log "[$CC] Узел $NEW_TGT недоступен — пропускаем."
         continue
     fi
 
@@ -408,7 +408,7 @@ for cand in $CANDIDATES; do
 
     if health_tcp "$NEW_TGT"; then
         echo "$CC" > "$STATE_FILE"
-        log "Успешно активирована страна $CC ($NEW_TGT)."
+        log "Успешно активирована узел $NEW_TGT."
         if [ -n "$CURRENT_CC" ] && [ "$CURRENT_CC" != "$CC" ]; then
             send_telegram "СМЕНА СЕРВЕРА" "Выполнено переключение с $CURRENT_CC ($CUR_TGT) на $CC ($NEW_TGT).
 Новый сервер активирован и успешно прошёл проверку доступности."
