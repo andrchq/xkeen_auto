@@ -302,7 +302,6 @@ while true; do
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
             printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
             printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
-            printf "${GREEN}GitHub:${RESET} https://github.com/andrchq/xkeen_auto\n"
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
@@ -447,7 +446,7 @@ if dialog_yesno "Рекомендуемые настройки Xray" "Устан
 ✓ Умная маршрутизация (RU напрямую, заблокированное через прокси)
 ✓ Оптимизация для Telegram, Discord, Google, ChatGPT
 ✓ Блокировка QUIC для стабильности
-✓ BitTorrent напрямую (экономия трафика)
+✓ BitTorrent напрямую (ЗАПРЕЩЕНО использовать через прокси)
 
 Существующие файлы будут заменены."; then
     
@@ -626,7 +625,6 @@ if [ "$USE_DIALOG" -eq 1 ]; then
 ════════════════════════════════════════════════════════════
 Покупка: https://t.me/prstabot
 Поддержка: https://t.me/prsta_helpbot
-GitHub: https://github.com/andrchq/xkeen_auto
 ════════════════════════════════════════════════════════════" 25 70
 else
     show_header
