@@ -69,7 +69,7 @@ while [ $# -gt 0 ]; do
             echo "Использование: $0 [опции]"
             echo ""
             echo "Опции:"
-            echo "  --force           Принудительная ротация даже если текущий узел работает"
+            echo "  --force           Принудительная ротация даже если текущая страна работает"
             echo "  --test            Dry-run режим (без реального переключения)"
             echo "  --status          Показать состояние всех нод"
             echo "  --test-notify     Отправить тестовое уведомление в Telegram"
@@ -158,7 +158,7 @@ auto_test_notify() {
     fi
     send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Проверка системы уведомлений.
 Текущая страна: ${CURRENT_CC:-не установлена}
-Узел: $CURRENT_NODE
+Страна: $CURRENT_NODE
 
 <b>Уведомления работают корректно.</b>
     echo "$CURRENT_TIME" > "$TEST_NOTIFY_FILE"
@@ -283,7 +283,7 @@ if [ "$TEST_NOTIFY" -eq 1 ]; then
     fi
     send_telegram "ТЕСТ УВЕДОМЛЕНИЙ" "Проверка системы уведомлений xkeen_rotate.
 Текущая страна: ${CURRENT_CC:-не установлена}
-Узел: $CURRENT_NODE
+Страна: $CURRENT_NODE
 
 <b>Уведомления работают корректно.</b>
     if [ "$TG_ENABLED" -eq 1 ]; then
