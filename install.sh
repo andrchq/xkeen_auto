@@ -555,28 +555,21 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
                 printf "${BLUE}Все конфигурации установлены. Перезапускаю Xray...${RESET}\n"
                 echo ""
                 
-                RESTART_LOG="/tmp/xray_restart_$$.log"
-                xkeen -restart > "$RESTART_LOG" 2>&1 &
-                RESTART_PID=$!
-                
                 printf "${GRAY}Ожидание завершения перезапуска (10 секунд)...${RESET}\n"
-                sleep 10
                 
-                wait "$RESTART_PID" 2>/dev/null || true
-                sleep 1
+                RESTART_LOG="/tmp/xray_restart_$$.log"
+                xkeen -restart > "$RESTART_LOG" 2>&1
                 
                 if [ -f "$RESTART_LOG" ]; then
-                    RESTART_OUTPUT=$(cat "$RESTART_LOG")
                     echo ""
-                    echo "$RESTART_OUTPUT"
+                    cat "$RESTART_LOG"
                     echo ""
                     
-                    if echo "$RESTART_OUTPUT" | grep "запущен" >/dev/null 2>&1; then
+                    if cat "$RESTART_LOG" | grep -q "запущен"; then
                         printf "${GREEN}${BOLD}✓ Xray успешно перезапущен! Все конфигурации применены.${RESET}\n"
                         log "Xray перезапущен успешно с новыми конфигурациями"
                     else
                         printf "${YELLOW}⚠ Не удалось подтвердить успешный запуск${RESET}\n"
-                        printf "${YELLOW}Если в выводе выше есть строка \"Прокси-клиент запущен\" - все работает!${RESET}\n"
                     fi
                     rm -f "$RESTART_LOG"
                 else
