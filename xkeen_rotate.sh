@@ -70,7 +70,7 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "Опции:"
             echo "  --force           Принудительная ротация даже если текущая страна работает"
-            echo "  --test            Dry-run режим (без реального переключения)"
+            printf "  --test            Dry-run режим (без реального переключения)\n"
             echo "  --status          Показать состояние всех нод"
             echo "  --test-notify     Отправить тестовое уведомление в Telegram"
             echo "  --country=XX      Переключиться на конкретную страну"
@@ -185,7 +185,7 @@ health_tcp() {
 
 restart_xkeen() {
     if [ "$DRY_RUN" -eq 1 ]; then
-        echo "[TEST] Перезапуск xkeen пропущен (dry-run)"
+        printf "[TEST] Перезапуск xkeen пропущен (dry-run)\n"
         return 0
     fi
     eval "$CUSTOM_RESTART_CMD" >/dev/null 2>&1
@@ -209,7 +209,7 @@ show_status() {
     [ -f "$STATE_FILE" ] && CURRENT_CC="$(cat "$STATE_FILE" 2>/dev/null)"
     if [ -f "$ACTIVE_TARGET" ]; then
         CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
-        echo -n "Активная: $CURRENT_CC ($CUR_TGT) - "
+        printf "Активная: $CURRENT_CC ($CUR_TGT) - "
         if health_tcp "$CUR_TGT"; then
             echo "✓ ДОСТУПНА"
         else
@@ -242,7 +242,7 @@ show_status() {
             echo "  $CC: .target пуст"
             continue
         fi
-        echo -n "  $CC ($TGT) - "
+        printf "  $CC ($TGT) - "
         if health_tcp "$TGT"; then
             echo "✓ доступна"
         else
@@ -289,7 +289,7 @@ if [ "$TEST_NOTIFY" -eq 1 ]; then
     if [ "$TG_ENABLED" -eq 1 ]; then
         echo "✓ Тестовое уведомление отправлено в топик $TG_TOPIC_ID группы $TG_CHAT_ID"
     else
-        echo "✗ Telegram уведомления отключены (TG_ENABLED=0)"
+        printf "✗ Telegram уведомления отключены (TG_ENABLED=0)\n"
     fi
     exit 0
 fi
@@ -351,7 +351,7 @@ CANDIDATES=$(ls "${AVAILABLE_DIR}"/04_outbounds_*.json 2>/dev/null)
 [ -z "$CANDIDATES" ] && { log "Нет доступных файлов в $AVAILABLE_DIR"; exit 3; }
 
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "[TEST] Резервное копирование пропущено (dry-run)"
+    printf "[TEST] Резервное копирование пропущено (dry-run)\n"
 else
     [ -f "$ACTIVE_FILE" ] && cp -a "$ACTIVE_FILE" "$BACKUP_DIR/04_outbounds.json.$(date +%s).bak" 2>/dev/null
     [ -f "$ACTIVE_TARGET" ] && cp -a "$ACTIVE_TARGET" "$BACKUP_DIR/04_outbounds.target.$(date +%s).bak" 2>/dev/null
@@ -393,7 +393,7 @@ for cand in $CANDIDATES; do
     fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
-        echo "[TEST] Переключение на $CC ($NEW_TGT)"
+        printf "[TEST] Переключение на $CC ($NEW_TGT)\n"
         echo "[TEST] Файлы: ${AVAILABLE_DIR}/04_outbounds_${CC}.json -> $ACTIVE_FILE"
         exit 0
     else
