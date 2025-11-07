@@ -95,13 +95,9 @@ curl -sSL https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh |
 ## Удаление
 
 ```bash
-# Удалить задания из cron
+# Удалить задания из cron (ротация и автозапуск)
 crontab -e
-# Удалите строки с xkeen_rotate.sh
-
-# Удалить из автозапуска
-vi /etc/rc.local
-# Удалите строку с xkeen_rotate.sh
+# Удалите все строки с xkeen_rotate.sh (включая @reboot)
 
 # Удалить команду prosto
 rm -f /opt/bin/prosto
