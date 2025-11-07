@@ -440,6 +440,54 @@ printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n
 printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 sleep 2
 
+if dialog_yesno "Рекомендуемые настройки Xray" "Установить оптимизированные конфигурации inbound и routing?
+
+Преимущества:
+✓ Блокировка рекламы и аналитики
+✓ Умная маршрутизация (RU напрямую, заблокированное через прокси)
+✓ Оптимизация для Telegram, Discord, Google, ChatGPT
+✓ Блокировка QUIC для стабильности
+✓ BitTorrent напрямую (экономия трафика)
+
+Существующие файлы будут заменены."; then
+    
+    show_header
+    show_section "Установка конфигураций Xray"
+    
+    BACKUP_SUFFIX=$(date +%s)
+    
+    if [ -f "$CONFIG_DIR/configs/03_inbounds.json" ]; then
+        cp "$CONFIG_DIR/configs/03_inbounds.json" "$CONFIG_DIR/configs/03_inbounds.json.bak.$BACKUP_SUFFIX" 2>/dev/null
+        log "Создан backup: 03_inbounds.json.bak.$BACKUP_SUFFIX"
+    fi
+    
+    if [ -f "$CONFIG_DIR/configs/05_routing.json" ]; then
+        cp "$CONFIG_DIR/configs/05_routing.json" "$CONFIG_DIR/configs/05_routing.json.bak.$BACKUP_SUFFIX" 2>/dev/null
+        log "Создан backup: 05_routing.json.bak.$BACKUP_SUFFIX"
+    fi
+    
+    if curl -sSL "$GITHUB_RAW/03_inbounds.json" -o "$CONFIG_DIR/configs/03_inbounds.json"; then
+        log "✓ 03_inbounds.json установлен"
+    else
+        log "⚠ Не удалось загрузить 03_inbounds.json"
+    fi
+    
+    if curl -sSL "$GITHUB_RAW/05_routing.json" -o "$CONFIG_DIR/configs/05_routing.json"; then
+        log "✓ 05_routing.json установлен"
+    else
+        log "⚠ Не удалось загрузить 05_routing.json"
+    fi
+    
+    printf "${GREEN}✓ Конфигурации установлены${RESET}\n"
+    printf "${YELLOW}⚠ Требуется перезапуск Xray для применения изменений${RESET}\n"
+    sleep 2
+else
+    show_header
+    show_section "Конфигурации пропущены"
+    log "Пропущено (текущие конфигурации сохранены)"
+    sleep 1
+fi
+
 if dialog_yesno "Настройка Telegram уведомлений" "Для получения ID топика напишите администратору в @prsta_helpbot
 
 Администратор предоставит вам индивидуальный ID топика для получения уведомлений о состоянии сервера.
