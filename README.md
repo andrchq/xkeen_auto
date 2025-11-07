@@ -78,8 +78,11 @@ wget https://raw.githubusercontent.com/andrchq/xkeen_auto/main/xkeen_sync.sh
 chmod +x xkeen_rotate.sh xkeen_sync.sh
 
 # 4. Установить команду prosto
-wget https://raw.githubusercontent.com/andrchq/xkeen_auto/main/prosto -O /usr/bin/prosto
-chmod +x /usr/bin/prosto
+mkdir -p /opt/bin
+wget https://raw.githubusercontent.com/andrchq/xkeen_auto/main/prosto -O /opt/bin/prosto
+chmod +x /opt/bin/prosto
+export PATH="/opt/bin:$PATH"
+echo 'export PATH="/opt/bin:$PATH"' >> /etc/profile
 
 # 5. Настроить Telegram в xkeen_rotate.sh (строки 16-19)
 vi xkeen_rotate.sh
@@ -165,7 +168,7 @@ TEST_NOTIFY_INTERVAL=300                           # интервал в сек�
 ├── xkeen_rotate.sh          # Основной скрипт ротации
 └── xkeen_sync.sh            # Синхронизация подписки
 
-/usr/bin/
+/opt/bin/
 └── prosto                   # Команда быстрого доступа
 
 /opt/etc/xray/
@@ -223,9 +226,16 @@ chmod +x /opt/root/scripts/xkeen*.sh
 ### Команда prosto не работает
 ```bash
 # Проверьте установку
-ls -la /usr/bin/prosto
+ls -la /opt/bin/prosto
 
-# Переустановите
+# Если файл есть, но команда не найдена - добавьте в PATH
+export PATH="/opt/bin:$PATH"
+echo 'export PATH="/opt/bin:$PATH"' >> /etc/profile
+
+# Или используйте полный путь
+/opt/bin/prosto
+
+# Переустановите если нужно
 curl -sSL https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh | sh
 ```
 

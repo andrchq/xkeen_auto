@@ -152,7 +152,13 @@ dialog_menu() {
 }
 
 create_prosto_command() {
-    cat > /usr/bin/prosto << 'EOFPROSTO'
+    PROSTO_PATH="/opt/bin/prosto"
+    
+    if [ ! -d "/opt/bin" ]; then
+        mkdir -p /opt/bin
+    fi
+    
+    cat > "$PROSTO_PATH" << 'EOFPROSTO'
 #!/bin/sh
 
 SCRIPT_DIR="/opt/root/scripts"
@@ -315,7 +321,23 @@ while true; do
 done
 EOFPROSTO
 
-    chmod +x /usr/bin/prosto
+    chmod +x "$PROSTO_PATH"
+    
+    if ! echo "$PATH" | grep -q "/opt/bin"; then
+        if [ -f /etc/profile ]; then
+            if ! grep -q "export PATH=.*\/opt\/bin" /etc/profile; then
+                echo 'export PATH="/opt/bin:$PATH"' >> /etc/profile
+            fi
+        fi
+        
+        if [ -f ~/.profile ]; then
+            if ! grep -q "export PATH=.*\/opt\/bin" ~/.profile; then
+                echo 'export PATH="/opt/bin:$PATH"' >> ~/.profile
+            fi
+        fi
+    fi
+    
+    export PATH="/opt/bin:$PATH"
 }
 
 check_and_install_whiptail
@@ -413,9 +435,10 @@ show_section "Установка команды prosto"
 
 create_prosto_command
 
-log "✓ Команда 'prosto' установлена"
-printf "${BLUE}   Теперь вы можете использовать команду: ${BOLD}prosto${RESET}\n"
-sleep 1
+log "✓ Команда 'prosto' установлена в /opt/bin"
+printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n"
+printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
+sleep 2
 
 if dialog_yesno "Настройка Telegram уведомлений" "Для получения ID топика напишите администратору в @prsta_helpbot
 
@@ -599,5 +622,6 @@ fi
 show_header
 printf "${GREEN}${BOLD}Готово! Система автоматической ротации активна.${RESET}\n"
 echo ""
-printf "${BLUE}Используйте команду: ${BOLD}prosto${RESET}\n"
+printf "${BLUE}${BOLD}Используйте команду: prosto${RESET}\n"
+printf "${GRAY}(Если команда не найдена, выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 echo ""

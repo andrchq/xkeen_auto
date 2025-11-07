@@ -46,6 +46,13 @@ wget -qO- https://raw.githubusercontent.com/andrchq/xkeen_auto/main/install.sh |
 
 Для управления системой используйте команду `prosto`:
 
+**Если команда не найдена:**
+```bash
+export PATH="/opt/bin:$PATH"
+```
+
+Или используйте полный путь: `/opt/bin/prosto`
+
 ```bash
 prosto                   # Интерактивное меню
 prosto status            # Показать статус серверов
@@ -97,7 +104,7 @@ vi /etc/rc.local
 # Удалите строку с xkeen_rotate.sh
 
 # Удалить команду prosto
-rm -f /usr/bin/prosto
+rm -f /opt/bin/prosto
 
 # Удалить скрипты
 rm -rf /opt/root/scripts/xkeen_*.sh
