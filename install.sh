@@ -478,7 +478,22 @@ if dialog_yesno "Рекомендуемые настройки Xray" "Устан
     fi
     
     printf "${GREEN}✓ Конфигурации установлены${RESET}\n"
-    printf "${YELLOW}⚠ Требуется перезапуск Xray для применения изменений${RESET}\n"
+    echo ""
+    printf "${BLUE}Перезапускаю Xray для применения изменений...${RESET}\n"
+    echo ""
+    
+    RESTART_OUTPUT=$(xkeen -restart 2>&1)
+    echo "$RESTART_OUTPUT"
+    echo ""
+    
+    if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+        printf "${GREEN}✓ Xray успешно перезапущен с новыми конфигурациями${RESET}\n"
+        log "Xray перезапущен успешно"
+    else
+        printf "${RED}✗ Ошибка перезапуска Xray${RESET}\n"
+        printf "${YELLOW}Проверьте конфигурации вручную: xkeen -restart${RESET}\n"
+        log "Ошибка перезапуска Xray"
+    fi
     sleep 2
 else
     show_header
