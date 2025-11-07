@@ -69,6 +69,16 @@ show_section() {
     echo ""
 }
 
+countdown() {
+    SECONDS=${1:-5}
+    printf "${GRAY}"
+    for i in $(seq $SECONDS -1 1); do
+        printf "\r   [$i] "
+        sleep 1
+    done
+    printf "\r        \r${RESET}"
+}
+
 log() {
     printf "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] $*${RESET}\n"
 }
@@ -420,7 +430,7 @@ if ! curl -sSL "$GITHUB_RAW/xkeen_sync.sh" -o "$INSTALL_DIR/xkeen_sync.sh"; then
 fi
 
 log "✓ Скрипты загружены"
-sleep 1
+countdown 3
 
 show_header
 show_section "Установка прав доступа"
@@ -429,7 +439,7 @@ chmod +x "$INSTALL_DIR/xkeen_rotate.sh"
 chmod +x "$INSTALL_DIR/xkeen_sync.sh"
 
 log "✓ Права установлены"
-sleep 1
+countdown 3
 
 show_header
 show_section "Установка команды prosto"
@@ -439,7 +449,7 @@ create_prosto_command
 log "✓ Команда 'prosto' установлена в /opt/bin"
 printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n"
 printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
-sleep 2
+countdown 3
 
 if command -v xkeen >/dev/null 2>&1 && dialog_yesno "Рекомендуемые настройки Xray" "Установить оптимизированные конфигурации inbound и routing?
 
@@ -482,7 +492,7 @@ if command -v xkeen >/dev/null 2>&1 && dialog_yesno "Рекомендуемые 
     printf "${GREEN}✓ Конфигурации inbound и routing установлены${RESET}\n"
     printf "${GRAY}   Перезапуск Xray будет выполнен после настройки подписки${RESET}\n"
     CONFIGS_INSTALLED=1
-    sleep 1
+    countdown 5
 else
     show_header
     show_section "Конфигурации пропущены"
@@ -504,7 +514,7 @@ if dialog_yesno "Настройка Telegram уведомлений" "Для п�
         show_header
         show_section "Telegram настроен"
         log "✓ Telegram настроен"
-        sleep 1
+        countdown 3
         
         if dialog_yesno "Тестовое уведомление" "Отправить тестовое уведомление в Telegram для проверки настроек?"; then
             show_header
@@ -512,7 +522,7 @@ if dialog_yesno "Настройка Telegram уведомлений" "Для п�
             log "Отправляю тестовое уведомление..."
             cd "$INSTALL_DIR"
             ./xkeen_rotate.sh --test-notify
-            sleep 2
+            countdown 5
         fi
     fi
 else
@@ -532,13 +542,13 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
     cd "$INSTALL_DIR"
     if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
         log "✓ Серверы загружены"
-        sleep 1
+        countdown 5
         
         show_header
         show_section "Доступные серверы"
         ./xkeen_rotate.sh --status
         
-        sleep 2
+        countdown 5
         
         if dialog_yesno "Активация сервера" "Активировать первый доступный сервер сейчас?"; then
             show_header
@@ -547,7 +557,7 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
             ./xkeen_rotate.sh
             log "✓ Сервер активирован"
             SERVER_ACTIVATED=1
-            sleep 1
+            countdown 5
             
             if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
                 show_header
@@ -575,7 +585,7 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
                 else
                     printf "${YELLOW}⚠ Не удалось получить вывод команды${RESET}\n"
                 fi
-                sleep 2
+                countdown 5
             fi
         fi
     else
@@ -633,7 +643,7 @@ if dialog_yesno "Настройка автоматической ротации"
     if [ "$SETUP_AUTOSTART" -eq 1 ]; then
         log "✓ Автозапуск настроен через cron (@reboot)"
     fi
-    sleep 1
+    countdown 5
 else
     show_header
     show_section "Cron настройка пропущена"
