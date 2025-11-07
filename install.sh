@@ -7,6 +7,7 @@ CONFIG_DIR="/opt/etc/xray"
 GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
 USE_DIALOG=0
 DIALOG_CMD=""
+XRAY_RESTARTED=0
 
 GRAY="\033[90m"
 BLUE="\033[94m"
@@ -482,46 +483,24 @@ if dialog_yesno "Рекомендуемые настройки Xray" "Устан
     printf "${BLUE}Перезапускаю Xray для применения изменений...${RESET}\n"
     echo ""
     
-    RESTART_TEMP=$(mktemp)
-    xkeen -restart > "$RESTART_TEMP" 2>&1 &
-    RESTART_PID=$!
+    RESTART_LOG="/tmp/xray_restart_$$.log"
+    xkeen -restart > "$RESTART_LOG" 2>&1 &
+    sleep 7
     
-    TIMEOUT=30
-    ELAPSED=0
-    while kill -0 "$RESTART_PID" 2>/dev/null; do
-        if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-            kill "$RESTART_PID" 2>/dev/null
-            wait "$RESTART_PID" 2>/dev/null
-            printf "${RED}✗ Таймаут перезапуска Xray (${TIMEOUT}s)${RESET}\n"
-            printf "${YELLOW}Попробуйте перезапустить вручную: xkeen -restart${RESET}\n"
-            rm -f "$RESTART_TEMP"
-            log "Таймаут перезапуска Xray"
-            sleep 2
-            break
-        fi
-        sleep 1
-        ELAPSED=$((ELAPSED + 1))
-    done
-    
-    if kill -0 "$RESTART_PID" 2>/dev/null; then
-        :
-    else
-        wait "$RESTART_PID" 2>/dev/null
-        RESTART_OUTPUT=$(cat "$RESTART_TEMP")
-        echo "$RESTART_OUTPUT"
-        echo ""
-        
+    if [ -f "$RESTART_LOG" ]; then
+        RESTART_OUTPUT=$(cat "$RESTART_LOG")
         if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
             printf "${GREEN}✓ Xray успешно перезапущен с новыми конфигурациями${RESET}\n"
             log "Xray перезапущен успешно"
+            XRAY_RESTARTED=1
         else
-            printf "${YELLOW}⚠ Не удалось подтвердить успешный запуск${RESET}\n"
-            printf "${YELLOW}Проверьте статус вручную: xkeen -restart${RESET}\n"
-            log "Неопределенный статус перезапуска Xray"
+            log "Не удалось подтвердить перезапуск Xray"
         fi
-        rm -f "$RESTART_TEMP"
-        sleep 2
+        rm -f "$RESTART_LOG"
+    else
+        log "Не удалось получить вывод команды xkeen -restart"
     fi
+    sleep 1
 else
     show_header
     show_section "Конфигурации пропущены"
@@ -706,3 +685,21 @@ echo ""
 printf "${BLUE}${BOLD}Используйте команду: prosto${RESET}\n"
 printf "${GRAY}(Если команда не найдена, выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 echo ""
+
+if [ "$XRAY_RESTARTED" -eq 0 ]; then
+    echo ""
+    printf "${RED}${BOLD}╔═══════════════════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${RED}${BOLD}║                                                                           ║${RESET}\n"
+    printf "${RED}${BOLD}║                    ⚠️  ВАЖНО: ТРЕБУЕТСЯ ПЕРЕЗАПУСК XRAY  ⚠️                ║${RESET}\n"
+    printf "${RED}${BOLD}║                                                                           ║${RESET}\n"
+    printf "${RED}${BOLD}╚═══════════════════════════════════════════════════════════════════════════╝${RESET}\n"
+    echo ""
+    printf "${YELLOW}${BOLD}Конфигурации были установлены, но не удалось подтвердить перезапуск.${RESET}\n"
+    printf "${YELLOW}${BOLD}Для применения изменений выполните команду:${RESET}\n"
+    echo ""
+    printf "${GREEN}${BOLD}    xkeen -restart${RESET}\n"
+    echo ""
+    printf "${GRAY}После успешного перезапуска вы должны увидеть:${RESET}\n"
+    printf "${GRAY}  \"Прокси-клиент запущен\"${RESET}\n"
+    echo ""
+fi
