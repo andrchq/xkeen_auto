@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# === Init скрипт для уведомлений о старте системы ===
+# Запускается автоматически при загрузке роутера
+
+SCRIPT_PATH="/opt/root/scripts/startup_notify.sh"
+
+case "$1" in
+    start)
+        if [ -x "$SCRIPT_PATH" ]; then
+            logger -t startup_notify "[init] Запуск уведомления о старте роутера"
+            "$SCRIPT_PATH" &
+        else
+            logger -t startup_notify "[init] ОШИБКА: Скрипт $SCRIPT_PATH не найден или не исполняемый"
+        fi
+        ;;
+    stop)
+        # Нет действий при остановке
+        ;;
+    restart)
+        "$0" stop
+        "$0" start
+        ;;
+    *)
+        echo "Использование: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

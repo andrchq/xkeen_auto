@@ -1,0 +1,77 @@
+#!/bin/sh
+
+# === Init скрипт для автозапуска Xray ===
+# Интегрирован с системой автоматической ротации простовпн
+
+AUTOSTART="on"
+START_DELAY=30
+MAX_WAIT=300  # Максимум 5 минут ожидания интернета
+
+log_info_router() {
+    logger -p notice -t "XKeen" "$1"
+}
+
+# Удаляем старый скрипт если существует
+[ -f "/opt/etc/init.d/S99xkeenrestart" ] && rm -f "/opt/etc/init.d/S99xkeenrestart"
+
+case "$1" in
+    start)
+        if [ "${AUTOSTART}" = "on" ]; then
+            (
+                HOST="1.1.1.1"
+                WAITED=0
+                
+                log_info_router "Ожидание доступности интернета для запуска Xray"
+                
+                while [ $WAITED -lt $MAX_WAIT ]; do
+                    if ping -c 1 -W 2 "$HOST" >/dev/null 2>&1; then
+                        log_info_router "Интернет доступен, запуск Xray через $START_DELAY секунд"
+                        sleep $START_DELAY
+                        
+                        if [ -x /opt/etc/init.d/S24xray ]; then
+                            /opt/etc/init.d/S24xray restart
+                            log_info_router "Xray успешно запущен"
+                        else
+                            log_info_router "ОШИБКА: S24xray не найден"
+                        fi
+                        
+                        # Запускаем ротацию серверов если настроена
+                        if [ -x /opt/root/scripts/xkeen_rotate.sh ]; then
+                            sleep 10
+                            log_info_router "Запуск системы ротации серверов"
+                            /opt/root/scripts/xkeen_rotate.sh >/dev/null 2>&1 &
+                        fi
+                        
+                        break
+                    fi
+                    
+                    sleep 5
+                    WAITED=$((WAITED + 5))
+                    
+                    if [ $((WAITED % 30)) -eq 0 ]; then
+                        log_info_router "Ожидание интернета... ($WAITED/$MAX_WAIT сек)"
+                    fi
+                done
+                
+                if [ $WAITED -ge $MAX_WAIT ]; then
+                    log_info_router "ПРЕДУПРЕЖДЕНИЕ: Интернет недоступен после $MAX_WAIT секунд ожидания"
+                fi
+            ) &
+        else
+            log_info_router "Автозапуск отключен (AUTOSTART=off)"
+        fi
+        ;;
+    stop)
+        # Нет действий при остановке
+        ;;
+    restart)
+        "$0" stop
+        "$0" start
+        ;;
+    *)
+        echo "Использование: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

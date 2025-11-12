@@ -196,10 +196,13 @@ show_menu() {
     printf "${BLUE}3)${RESET} Тестовое уведомление\n"
     printf "${BLUE}4)${RESET} Синхронизация подписки\n"
     printf "${BLUE}5)${RESET} Очистка технических серверов\n"
-    printf "${BLUE}6)${RESET} Просмотр логов (последние 30 строк)\n"
-    printf "${BLUE}7)${RESET} Просмотр логов (в реальном времени)\n"
-    printf "${BLUE}8)${RESET} Редактировать настройки\n"
-    printf "${BLUE}9)${RESET} О системе\n"
+    printf "${BLUE}6)${RESET} Просмотр логов ротации (последние 30 строк)\n"
+    printf "${BLUE}7)${RESET} Просмотр логов ротации (в реальном времени)\n"
+    printf "${BLUE}8)${RESET} Просмотр логов мониторинга\n"
+    printf "${BLUE}9)${RESET} Перезапуск xkeen\n"
+    printf "${BLUE}10)${RESET} Редактировать настройки ротации\n"
+    printf "${BLUE}11)${RESET} Редактировать настройки мониторинга\n"
+    printf "${BLUE}12)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
@@ -306,9 +309,45 @@ while true; do
             logread -f | grep xkeen_rotate
             ;;
         8)
-            vi $SCRIPT_DIR/xkeen_rotate.sh
+            show_header
+            printf "${BLUE}Логи мониторинга сети (последние 50 строк):${RESET}\n\n"
+            logread | grep -E "network_watchdog|startup_notify|xkeen_restart" | tail -50
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
             ;;
         9)
+            show_header
+            printf "${BLUE}Перезапуск xkeen с логированием...${RESET}\n\n"
+            if [ -f "$SCRIPT_DIR/xkeen_restart.sh" ]; then
+                $SCRIPT_DIR/xkeen_restart.sh
+            else
+                /opt/bin/xkeen -restart
+            fi
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        10)
+            vi $SCRIPT_DIR/xkeen_rotate.sh
+            ;;
+        11)
+            show_header
+            printf "${BLUE}Выберите скрипт для редактирования:${RESET}\n\n"
+            printf "${BLUE}1)${RESET} network_watchdog.sh (мониторинг сети)\n"
+            printf "${BLUE}2)${RESET} startup_notify.sh (уведомления о старте)\n"
+            printf "${BLUE}3)${RESET} xkeen_restart.sh (логирование перезапуска)\n"
+            echo ""
+            printf "${BLUE}Выбор: ${RESET}"
+            read -r subchoice
+            case $subchoice in
+                1) vi $SCRIPT_DIR/network_watchdog.sh ;;
+                2) vi $SCRIPT_DIR/startup_notify.sh ;;
+                3) vi $SCRIPT_DIR/xkeen_restart.sh ;;
+                *) echo "Отмена" ;;
+            esac
+            ;;
+        12)
             show_header
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
@@ -429,7 +468,46 @@ if ! curl -sSL "$GITHUB_RAW/xkeen_sync.sh" -o "$INSTALL_DIR/xkeen_sync.sh"; then
     error "Не удалось скачать xkeen_sync.sh"
 fi
 
-log "✓ Скрипты загружены"
+if ! curl -sSL "$GITHUB_RAW/network_watchdog.sh" -o "$INSTALL_DIR/network_watchdog.sh"; then
+    error "Не удалось скачать network_watchdog.sh"
+fi
+
+if ! curl -sSL "$GITHUB_RAW/startup_notify.sh" -o "$INSTALL_DIR/startup_notify.sh"; then
+    error "Не удалось скачать startup_notify.sh"
+fi
+
+if ! curl -sSL "$GITHUB_RAW/xkeen_restart.sh" -o "$INSTALL_DIR/xkeen_restart.sh"; then
+    error "Не удалось скачать xkeen_restart.sh"
+fi
+
+log "✓ Основные скрипты загружены"
+countdown 2
+
+show_header
+show_section "Загрузка init-скриптов"
+
+INIT_DIR="/opt/etc/init.d"
+mkdir -p "$INIT_DIR"
+
+if ! curl -sSL "$GITHUB_RAW/S99startup_notify" -o "$INIT_DIR/S99startup_notify"; then
+    log "⚠ Не удалось скачать S99startup_notify (продолжаем)"
+else
+    chmod +x "$INIT_DIR/S99startup_notify"
+    log "✓ S99startup_notify установлен"
+fi
+
+if ! curl -sSL "$GITHUB_RAW/S99xkeenstart" -o "$INIT_DIR/S99xkeenstart"; then
+    log "⚠ Не удалось скачать S99xkeenstart (продолжаем)"
+else
+    chmod +x "$INIT_DIR/S99xkeenstart"
+    log "✓ S99xkeenstart установлен"
+fi
+
+# Удаляем старые init-скрипты если существуют
+[ -f "$INIT_DIR/S01notify" ] && rm -f "$INIT_DIR/S01notify"
+[ -f "$INIT_DIR/S99xkeenrestart" ] && rm -f "$INIT_DIR/S99xkeenrestart"
+
+log "✓ Init-скрипты установлены"
 countdown 3
 
 show_header
@@ -437,6 +515,9 @@ show_section "Установка прав доступа"
 
 chmod +x "$INSTALL_DIR/xkeen_rotate.sh"
 chmod +x "$INSTALL_DIR/xkeen_sync.sh"
+chmod +x "$INSTALL_DIR/network_watchdog.sh"
+chmod +x "$INSTALL_DIR/startup_notify.sh"
+chmod +x "$INSTALL_DIR/xkeen_restart.sh"
 
 log "✓ Права установлены"
 countdown 3
@@ -510,10 +591,13 @@ if dialog_yesno "Настройка Telegram уведомлений" "Для п�
     
     if [ -n "$TG_TOPIC_ID" ]; then
         sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_rotate.sh"
+        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/network_watchdog.sh"
+        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/startup_notify.sh"
+        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_restart.sh"
         
         show_header
         show_section "Telegram настроен"
-        log "✓ Telegram настроен"
+        log "✓ Telegram настроен для всех скриптов"
         countdown 3
         
         if dialog_yesno "Тестовое уведомление" "Отправить тестовое уведомление в Telegram для проверки настроек?"; then
@@ -644,6 +728,62 @@ if dialog_yesno "Настройка автоматической ротации"
         log "✓ Автозапуск настроен через cron (@reboot)"
     fi
     countdown 5
+    
+    if dialog_yesno "Система мониторинга и автозапуска" "Настроить полную систему автоматизации?
+
+Система включает:
+✓ Автозапуск Xray при загрузке роутера (S99xkeenstart)
+✓ Автоматический выбор рабочего сервера
+✓ Уведомления о загрузке системы (S99startup_notify)
+✓ Мониторинг интернета каждые 5 минут
+✓ Автовосстановление при проблемах
+✓ Перезагрузка роутера при критических сбоях
+
+Рекомендуется включить для полностью автономной работы."; then
+        
+        show_header
+        show_section "Настройка системы автоматизации"
+        
+        # Включаем init-скрипты автозапуска
+        if [ -f "$INIT_DIR/S99xkeenstart" ]; then
+            log "✓ Автозапуск Xray включен (S99xkeenstart)"
+        fi
+        
+        if [ -f "$INIT_DIR/S99startup_notify" ]; then
+            log "✓ Уведомления о старте включены (S99startup_notify)"
+        fi
+        
+        # Настраиваем cron для мониторинга
+        TEMP_CRON=$(mktemp)
+        crontab -l > "$TEMP_CRON" 2>/dev/null || true
+        grep -v "network_watchdog.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
+        mv "$TEMP_CRON.new" "$TEMP_CRON"
+        
+        echo "" >> "$TEMP_CRON"
+        echo "# Мониторинг интернета и автовосстановление" >> "$TEMP_CRON"
+        echo "*/5 * * * * $INSTALL_DIR/network_watchdog.sh >/dev/null 2>&1" >> "$TEMP_CRON"
+        
+        crontab "$TEMP_CRON"
+        rm -f "$TEMP_CRON"
+        /etc/init.d/cron restart >/dev/null 2>&1 || true
+        
+        log "✓ Мониторинг сети настроен (проверка каждые 5 минут)"
+        log "✓ Полная система автоматизации активирована"
+        countdown 3
+    else
+        show_header
+        show_section "Автоматизация пропущена"
+        log "Пропущено (можно настроить позже вручную)"
+        log "Init-скрипты установлены но не активированы"
+        
+        # Отключаем автозапуск в S99xkeenstart
+        if [ -f "$INIT_DIR/S99xkeenstart" ]; then
+            sed -i 's/AUTOSTART="on"/AUTOSTART="off"/' "$INIT_DIR/S99xkeenstart"
+            log "✓ Автозапуск Xray отключен"
+        fi
+        
+        sleep 2
+    fi
 else
     show_header
     show_section "Cron настройка пропущена"
