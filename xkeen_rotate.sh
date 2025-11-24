@@ -12,6 +12,7 @@ TCP_TIMEOUT=10                                      # таймаут TCP-про�
 RESTART_WAIT=10                                     # время ожидания после xkeen -restart
 LOCK_FILE="/var/run/xkeen_rotate.lock"              # файл блокировки
 SYNC_SCRIPT="/opt/root/scripts/xkeen_sync.sh"      # скрипт синхронизации подписки
+SUBSCRIPTION_FILE="/opt/root/scripts/.subscription_url"  # файл с URL подписки
 CUSTOM_RESTART_CMD="/opt/bin/xkeen -restart"       # команда перезапуска
 TG_BOT_TOKEN="7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U"  # токен бота (общий)
 TG_CHAT_ID="-1002517339071"                         # ID группы (общий)
@@ -26,8 +27,10 @@ FORCE_ROTATE=0
 DRY_RUN=0
 SHOW_STATUS=0
 TEST_NOTIFY=0
+VERBOSE=0
 TARGET_COUNTRY=""
 SYNC_URL=""
+DO_CLEANUP=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -43,6 +46,9 @@ while [ $# -gt 0 ]; do
         --test-notify)
             TEST_NOTIFY=1
             ;;
+        --verbose)
+            VERBOSE=1
+            ;;
         --country=*)
             TARGET_COUNTRY="${1#--country=}"
             ;;
@@ -50,32 +56,20 @@ while [ $# -gt 0 ]; do
             SYNC_URL="${1#--sync-url=}"
             ;;
         --cleanup)
-            echo "Очистка технических серверов..."
-            CLEANED=0
-            for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
-                [ -f "$f" ] || continue
-                CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
-                if is_technical_server "$CC"; then
-                    echo "Удаляю: $CC"
-                    rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.json"
-                    rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.target"
-                    CLEANED=$((CLEANED + 1))
-                fi
-            done
-            echo "Удалено технических серверов: $CLEANED"
-            exit 0
+            DO_CLEANUP=1
             ;;
         *)
             echo "Использование: $0 [опции]"
             echo ""
             echo "Опции:"
             echo "  --force           Принудительная ротация даже если текущая страна работает"
+            echo "  --verbose         Подробный вывод (показывает переходы)"
             printf "  --test            Dry-run режим (без реального переключения)\n"
             echo "  --status          Показать состояние всех нод"
             echo "  --test-notify     Отправить тестовое уведомление в Telegram"
             echo "  --country=XX      Переключиться на конкретную страну"
             echo "  --sync-url=URL    Синхронизировать подписку перед ротацией"
-            echo "  --cleanup         Удалить технические серверы из доступных"
+            echo "  --cleanup         Очистка файлов (технические серверы, дубликаты, бэкапы)"
             echo ""
             echo "Примеры:"
             echo "  $0 --status"
@@ -90,25 +84,175 @@ done
 
 log() { logger -t xkeen_rotate "$*"; }
 
+verbose_print() {
+    [ "$VERBOSE" -eq 1 ] && echo "$*"
+}
+
+# Измерить ping до хоста (возвращает время в ms или 9999 если недоступен)
+measure_ping() {
+    HOST="$1"
+    # Извлекаем только хост без порта
+    HOST_ONLY="${HOST%%:*}"
+    PING_RESULT=$(ping -c 1 -W 2 "$HOST_ONLY" 2>/dev/null | grep -oE 'time=[0-9.]+' | cut -d= -f2 | head -1)
+    if [ -n "$PING_RESULT" ]; then
+        # Округляем до целого
+        echo "$PING_RESULT" | cut -d. -f1
+    else
+        echo "9999"
+    fi
+}
+
+# Получить список серверов отсортированных по ping
+get_sorted_candidates() {
+    TEMP_PING_FILE="/tmp/xkeen_ping_$$"
+    : > "$TEMP_PING_FILE"
+    
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        [ -z "$CC" ] && continue
+        
+        if is_technical_server "$CC"; then
+            continue
+        fi
+        
+        CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+        [ ! -f "$CAND_TARGET" ] && continue
+        
+        TGT="$(head -n1 "$CAND_TARGET" | tr -d '\r\n')"
+        [ -z "$TGT" ] && continue
+        
+        PING_MS=$(measure_ping "$TGT")
+        echo "$PING_MS $CC $TGT $f" >> "$TEMP_PING_FILE"
+    done
+    
+    # Сортируем по ping (первый столбец)
+    sort -n "$TEMP_PING_FILE"
+    rm -f "$TEMP_PING_FILE"
+}
+
 is_technical_server() {
     CC="$1"
+    
+    # Список технических/запрещённых названий (не страны/города)
+    TECHNICAL_NAMES="WIFI|WiFi|wifi|PROXY|proxy|TEST|test|LOCAL|local|VPN|vpn|SERVER|server|NODE|node|DIRECT|direct|BLOCK|block|REJECT|reject|AUTO|auto|BEST|best|FAST|fast|LOAD|load|BALANCE|balance"
+    
+    # Проверяем на технические названия
+    if echo "$CC" | grep -qiE "^($TECHNICAL_NAMES)$"; then
+        return 0
+    fi
+    
+    # Содержит спецсимволы
     if echo "$CC" | grep -q '%'; then
         return 0
     fi
+    
+    # Только цифры, нижний регистр или подчёркивания (не название страны)
     if echo "$CC" | grep -qE '^[0-9_a-z]+$'; then
         return 0
     fi
+    
+    # Содержит точку (вероятно домен)
     if echo "$CC" | grep -q '\.'; then
         return 0
     fi
+    
+    # Содержит квадратные скобки
     if echo "$CC" | grep -qE '[\[\]]'; then
         return 0
     fi
+    
+    # Слишком короткое или слишком длинное название
     CC_LEN=$(echo "$CC" | wc -c)
-    if [ "$CC_LEN" -lt 3 ] || [ "$CC_LEN" -gt 10 ]; then
+    if [ "$CC_LEN" -lt 3 ] || [ "$CC_LEN" -gt 15 ]; then
         return 0
     fi
-    return 1
+    
+    # Список допустимых стран/городов (проверка на совпадение)
+    VALID_COUNTRIES="USA|US|GERMANY|DE|RUSSIA|RU|FRANCE|FR|NETHERLANDS|NL|UK|GB|JAPAN|JP|SINGAPORE|SG|CANADA|CA|AUSTRALIA|AU|BRAZIL|BR|INDIA|IN|CHINA|CN|KOREA|KR|ITALY|IT|SPAIN|ES|POLAND|PL|SWEDEN|SE|NORWAY|NO|FINLAND|FI|DENMARK|DK|AUSTRIA|AT|SWITZERLAND|CH|BELGIUM|BE|IRELAND|IE|PORTUGAL|PT|GREECE|GR|CZECH|CZ|ROMANIA|RO|HUNGARY|HU|BULGARIA|BG|UKRAINE|UA|TURKEY|TR|ISRAEL|IL|UAE|DUBAI|HONG|HK|TAIWAN|TW|THAILAND|TH|VIETNAM|VN|INDONESIA|ID|MALAYSIA|MY|PHILIPPINES|PH|MEXICO|MX|ARGENTINA|AR|CHILE|CL|COLOMBIA|CO|PERU|PE|SOUTH|AFRICA|ZA|EGYPT|EG|MOROCCO|MA|NIGERIA|NG|KENYA|KE|LITVA|LATVIA|LV|LITHUANIA|LT|ESTONIA|EE|KAZAHSTAN|KAZAKHSTAN|KZ|UZBEKISTAN|UZ|GEORGIA|ARMENIA|AM|AZERBAIJAN|AZ|BELARUS|BY|MOLDOVA|MD|SERBIA|RS|CROATIA|HR|SLOVENIA|SI|SLOVAKIA|SK|CYPRUS|CY|MALTA|MT|LUXEMBOURG|LU|ICELAND|MOSCOW|BERLIN|LONDON|PARIS|AMSTERDAM|TOKYO|SEOUL|BEIJING|SHANGHAI|MUMBAI|SYDNEY|TORONTO|VANCOUVER|MIAMI|DALLAS|CHICAGO|ATLANTA|SEATTLE|DENVER|PHOENIX|BOSTON|WASHINGTON|NEWYORK|LOSANGELES|SANFRANCISCO|FRANKFURT|MUNICH|VIENNA|ZURICH|GENEVA|BRUSSELS|DUBLIN|LISBON|MADRID|BARCELONA|ROME|MILAN|PRAGUE|WARSAW|BUDAPEST|BUCHAREST|SOFIA|HELSINKI|STOCKHOLM|OSLO|COPENHAGEN"
+    
+    # Если название похоже на страну/город - это НЕ технический сервер
+    if echo "$CC" | grep -qiE "^($VALID_COUNTRIES)"; then
+        return 1
+    fi
+    
+    # По умолчанию считаем техническим если не в списке стран
+    return 0
+}
+
+# Полная очистка файлов
+do_full_cleanup() {
+    echo "=== Очистка файлов ==="
+    echo ""
+    CLEANED=0
+    
+    # 1. Удаление технических серверов
+    echo "1. Удаление технических серверов..."
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        if is_technical_server "$CC"; then
+            echo "   Удаляю: $CC"
+            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.json"
+            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+            CLEANED=$((CLEANED + 1))
+        fi
+    done
+    echo "   Удалено технических серверов: $CLEANED"
+    
+    # 2. Удаление .json без соответствующих .target
+    echo ""
+    echo "2. Удаление файлов без пары..."
+    ORPHANS=0
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        TARGET_FILE="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+        if [ ! -f "$TARGET_FILE" ]; then
+            echo "   Удаляю (нет .target): $CC"
+            rm -f "$f"
+            ORPHANS=$((ORPHANS + 1))
+        fi
+    done
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.target; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.target$/\1/p')
+        JSON_FILE="${AVAILABLE_DIR}/04_outbounds_${CC}.json"
+        if [ ! -f "$JSON_FILE" ]; then
+            echo "   Удаляю (нет .json): $CC.target"
+            rm -f "$f"
+            ORPHANS=$((ORPHANS + 1))
+        fi
+    done
+    echo "   Удалено файлов-сирот: $ORPHANS"
+    
+    # 3. Очистка старых бэкапов
+    echo ""
+    echo "3. Очистка старых бэкапов..."
+    if [ -d "$BACKUP_DIR" ]; then
+        BACKUP_COUNT=$(find "$BACKUP_DIR" -name "*.bak" -type f 2>/dev/null | wc -l)
+        find "$BACKUP_DIR" -name "*.bak" -type f -mtime +7 -delete 2>/dev/null
+        BACKUP_AFTER=$(find "$BACKUP_DIR" -name "*.bak" -type f 2>/dev/null | wc -l)
+        echo "   Было бэкапов: $BACKUP_COUNT, осталось: $BACKUP_AFTER"
+    else
+        echo "   Папка бэкапов не существует"
+    fi
+    
+    # 4. Очистка логов
+    echo ""
+    echo "4. Очистка старых логов..."
+    LOG_DIRS="/opt/root/xkeen_logs"
+    if [ -d "$LOG_DIRS" ]; then
+        OLD_LOGS=$(find "$LOG_DIRS" -name "*.log" -type f -mtime +7 2>/dev/null | wc -l)
+        find "$LOG_DIRS" -name "*.log" -type f -mtime +7 -delete 2>/dev/null
+        find "$LOG_DIRS" -name "*.log.gz" -type f -mtime +14 -delete 2>/dev/null
+        echo "   Удалено старых логов: $OLD_LOGS"
+    else
+        echo "   Папка логов не существует"
+    fi
+    
+    echo ""
+    echo "=== Очистка завершена ==="
 }
 
 send_telegram() {
@@ -209,9 +353,14 @@ show_status() {
     [ -f "$STATE_FILE" ] && CURRENT_CC="$(cat "$STATE_FILE" 2>/dev/null)"
     if [ -f "$ACTIVE_TARGET" ]; then
         CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
-        printf "Активная: $CURRENT_CC ($CUR_TGT) - "
+        CUR_PING=$(measure_ping "$CUR_TGT")
+        printf "Активная: $CURRENT_CC - "
         if health_tcp "$CUR_TGT"; then
-            echo "✓ ДОСТУПНА"
+            if [ "$CUR_PING" = "9999" ]; then
+                echo "✓ ДОСТУПНА"
+            else
+                echo "✓ ДОСТУПНА [${CUR_PING}ms]"
+            fi
         else
             echo "✗ НЕДОСТУПНА"
         fi
@@ -219,12 +368,19 @@ show_status() {
         echo "Активная: не настроена"
     fi
     echo ""
-    echo "Доступные ноды:"
+    echo "Доступные ноды (отсортированы по ping):"
+    
+    # Собираем данные с ping и сортируем
+    TEMP_STATUS="/tmp/xkeen_status_$$"
+    : > "$TEMP_STATUS"
+    
     CANDIDATES=$(ls "${AVAILABLE_DIR}"/04_outbounds_*.json 2>/dev/null)
     if [ -z "$CANDIDATES" ]; then
         echo "  Нет доступных конфигураций"
+        rm -f "$TEMP_STATUS"
         return
     fi
+    
     for cand in $CANDIDATES; do
         [ -f "$cand" ] || continue
         CC=$(basename "$cand" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
@@ -234,21 +390,34 @@ show_status() {
         fi
         CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
         if [ ! -f "$CAND_TARGET" ]; then
-            echo "  $CC: нет .target файла"
             continue
         fi
         TGT="$(head -n1 "$CAND_TARGET" | tr -d '\r\n')"
         if [ -z "$TGT" ]; then
-            echo "  $CC: .target пуст"
             continue
         fi
-        printf "  $CC ($TGT) - "
+        PING_MS=$(measure_ping "$TGT")
         if health_tcp "$TGT"; then
-            echo "✓ доступна"
+            echo "$PING_MS $CC available" >> "$TEMP_STATUS"
         else
-            echo "✗ недоступна"
+            echo "9999 $CC unavailable" >> "$TEMP_STATUS"
         fi
     done
+    
+    # Выводим отсортированный список (без IP/доменов)
+    sort -n "$TEMP_STATUS" | while read -r ping cc status; do
+        if [ "$status" = "available" ]; then
+            if [ "$ping" = "9999" ]; then
+                echo "  $cc - ✓ доступна"
+            else
+                echo "  $cc - ✓ доступна [${ping}ms]"
+            fi
+        else
+            echo "  $cc - ✗ недоступна"
+        fi
+    done
+    
+    rm -f "$TEMP_STATUS"
     exit 0
 }
 
@@ -316,6 +485,12 @@ fi
 
 [ "$SHOW_STATUS" -eq 1 ] && show_status
 
+# Обработка очистки
+if [ "$DO_CLEANUP" -eq 1 ]; then
+    do_full_cleanup
+    exit 0
+fi
+
 if [ "$TEST_NOTIFY" -ne 1 ] && [ "$SHOW_STATUS" -ne 1 ]; then
     auto_test_notify
 fi
@@ -347,8 +522,28 @@ else
     log "ACTIVE_TARGET не найден — требуется переключение."
 fi
 
-CANDIDATES=$(ls "${AVAILABLE_DIR}"/04_outbounds_*.json 2>/dev/null)
-[ -z "$CANDIDATES" ] && { log "Нет доступных файлов в $AVAILABLE_DIR"; exit 3; }
+# Получаем кандидатов отсортированных по ping
+verbose_print "Измерение ping до всех серверов..."
+SORTED_CANDIDATES=$(get_sorted_candidates)
+
+if [ -z "$SORTED_CANDIDATES" ]; then
+    log "Нет доступных файлов в $AVAILABLE_DIR"
+    echo "Нет доступных серверов для ротации."
+    exit 3
+fi
+
+if [ "$VERBOSE" -eq 1 ]; then
+    echo ""
+    echo "Серверы отсортированы по ping:"
+    echo "$SORTED_CANDIDATES" | while read -r ping cc tgt file; do
+        if [ "$ping" = "9999" ]; then
+            echo "  $cc - недоступен"
+        else
+            echo "  $cc - ${ping}ms"
+        fi
+    done
+    echo ""
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
     printf "[TEST] Резервное копирование пропущено (dry-run)\n"
@@ -358,19 +553,9 @@ else
     cleanup_backups
 fi
 
-cc_from_filename() {
-    basename "$1" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p'
-}
-
-for cand in $CANDIDATES; do
-    [ -f "$cand" ] || continue
-    CC=$(cc_from_filename "$cand")
+# Проходим по отсортированным кандидатам
+echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
     [ -z "$CC" ] && continue
-
-    if is_technical_server "$CC"; then
-        log "Пропускаем технический сервер: $CC"
-        continue
-    fi
 
     if [ -n "$TARGET_COUNTRY" ]; then
         [ "$CC" != "$TARGET_COUNTRY" ] && continue
@@ -381,27 +566,41 @@ for cand in $CANDIDATES; do
     fi
 
     CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
-    [ ! -f "$CAND_TARGET" ] && { log "Пропускаем $CC — нет .target"; continue; }
 
-    NEW_TGT="$(head -n1 "$CAND_TARGET" | tr -d '\r\n')"
-    [ -z "$NEW_TGT" ] && { log "Пропускаем $CC — .target пуст"; continue; }
-
+    verbose_print "Проверяем $CC (ping: ${PING_MS}ms)..."
     log "Проверяем $CC ($NEW_TGT)..."
+    
     if ! health_tcp "$NEW_TGT"; then
+        verbose_print "  ✗ $CC недоступен"
         log "[$CC] Узел $NEW_TGT недоступен — пропускаем."
         continue
     fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
-        printf "[TEST] Переключение на $CC ($NEW_TGT)\n"
-        echo "[TEST] Файлы: ${AVAILABLE_DIR}/04_outbounds_${CC}.json -> $ACTIVE_FILE"
+        printf "[TEST] Переключение на $CC\n"
         exit 0
-    else
-        mv -f "$ACTIVE_FILE" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.json" 2>/dev/null
-        mv -f "$ACTIVE_TARGET" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.target" 2>/dev/null
-        mv -f "$cand" "$ACTIVE_FILE" 2>/dev/null
-        mv -f "$CAND_TARGET" "$ACTIVE_TARGET" 2>/dev/null
     fi
+    
+    # Выводим информацию о переходе (без IP/доменов)
+    if [ -n "$CURRENT_CC" ] && [ "$CURRENT_CC" != "$CC" ]; then
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════╗"
+        echo "║                    СМЕНА СЕРВЕРА                           ║"
+        echo "╠════════════════════════════════════════════════════════════╣"
+        echo "║  С:  $CURRENT_CC"
+        echo "║  На: $CC [ping: ${PING_MS}ms]"
+        echo "╚════════════════════════════════════════════════════════════╝"
+        echo ""
+    else
+        echo ""
+        echo "Активация сервера: $CC [ping: ${PING_MS}ms]"
+        echo ""
+    fi
+
+    mv -f "$ACTIVE_FILE" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.json" 2>/dev/null
+    mv -f "$ACTIVE_TARGET" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.target" 2>/dev/null
+    mv -f "$cand" "$ACTIVE_FILE" 2>/dev/null
+    mv -f "$CAND_TARGET" "$ACTIVE_TARGET" 2>/dev/null
 
     log "Активируем $CC и перезапускаем xkeen..."
     restart_xkeen
@@ -409,6 +608,7 @@ for cand in $CANDIDATES; do
     if health_tcp "$NEW_TGT"; then
         echo "$CC" > "$STATE_FILE"
         log "Успешно активирована узел $NEW_TGT."
+        echo "✓ Сервер $CC успешно активирован!"
         if [ -n "$CURRENT_CC" ] && [ "$CURRENT_CC" != "$CC" ]; then
             send_telegram "СМЕНА СЕРВЕРА" "Выполнено переключение с $CURRENT_CC ($CUR_TGT) на $CC ($NEW_TGT).
 Новый сервер активирован и успешно прошёл проверку доступности."
@@ -416,6 +616,7 @@ for cand in $CANDIDATES; do
         exit 0
     else
         log "[$CC] После рестарта страна $CC всё ещё недоступна — пробуем следующего кандидата."
+        verbose_print "  ⚠ $CC не работает после перезапуска, пробуем следующий..."
     fi
 done
 

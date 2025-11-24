@@ -42,10 +42,8 @@ check_and_install_whiptail() {
             USE_DIALOG=1
             printf "${GREEN}✓ whiptail установлен${RESET}\n"
             sleep 1
-            
-            printf "${BLUE}Перезапускаю установщик с графическим интерфейсом...${RESET}\n"
-            sleep 2
-            exec "$0" "$@"
+            # Продолжаем выполнение с уже установленным whiptail
+            # (перезапуск не нужен, переменные уже установлены)
         else
             printf "${YELLOW}⚠ Не удалось установить whiptail, продолжаю в текстовом режиме${RESET}\n"
             sleep 2
@@ -174,9 +172,12 @@ create_prosto_command() {
 #!/bin/sh
 
 SCRIPT_DIR="/opt/root/scripts"
+SUBSCRIPTION_FILE="$SCRIPT_DIR/.subscription_url"
 GRAY="\033[90m"
 BLUE="\033[94m"
 GREEN="\033[92m"
+YELLOW="\033[93m"
+RED="\033[91m"
 RESET="\033[0m"
 BOLD="\033[1m"
 
@@ -188,6 +189,16 @@ show_header() {
     echo ""
 }
 
+get_subscription_url() {
+    if [ -f "$SUBSCRIPTION_FILE" ]; then
+        cat "$SUBSCRIPTION_FILE" 2>/dev/null | tr -d '\n\r'
+    fi
+}
+
+save_subscription_url() {
+    echo "$1" > "$SUBSCRIPTION_FILE"
+}
+
 show_menu() {
     show_header
     printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET}\n\n"
@@ -195,14 +206,9 @@ show_menu() {
     printf "${BLUE}2)${RESET} Принудительная ротация\n"
     printf "${BLUE}3)${RESET} Тестовое уведомление\n"
     printf "${BLUE}4)${RESET} Синхронизация подписки\n"
-    printf "${BLUE}5)${RESET} Очистка технических серверов\n"
-    printf "${BLUE}6)${RESET} Просмотр логов ротации (последние 30 строк)\n"
-    printf "${BLUE}7)${RESET} Просмотр логов ротации (в реальном времени)\n"
-    printf "${BLUE}8)${RESET} Просмотр логов мониторинга\n"
-    printf "${BLUE}9)${RESET} Перезапуск xkeen\n"
-    printf "${BLUE}10)${RESET} Редактировать настройки ротации\n"
-    printf "${BLUE}11)${RESET} Редактировать настройки мониторинга\n"
-    printf "${BLUE}12)${RESET} О системе\n"
+    printf "${BLUE}5)${RESET} Смена ссылки подписки\n"
+    printf "${BLUE}6)${RESET} Очистка файлов\n"
+    printf "${BLUE}7)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
@@ -212,29 +218,30 @@ if [ "$1" = "status" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --status
     exit 0
 elif [ "$1" = "force" ]; then
-    $SCRIPT_DIR/xkeen_rotate.sh --force
+    $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
     exit 0
 elif [ "$1" = "test" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --test-notify
     exit 0
 elif [ "$1" = "sync" ]; then
-    if [ -n "$2" ]; then
-        $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$2"
+    SAVED_URL=$(get_subscription_url)
+    if [ -n "$SAVED_URL" ]; then
+        $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
     else
-        echo "Использование: prosto sync <URL>"
+        printf "${RED}Ошибка: URL подписки не настроен.${RESET}\n"
+        echo "Используйте: prosto seturl <URL>"
+    fi
+    exit 0
+elif [ "$1" = "seturl" ]; then
+    if [ -n "$2" ]; then
+        save_subscription_url "$2"
+        printf "${GREEN}URL подписки сохранён.${RESET}\n"
+    else
+        echo "Использование: prosto seturl <URL>"
     fi
     exit 0
 elif [ "$1" = "cleanup" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --cleanup
-    exit 0
-elif [ "$1" = "logs" ]; then
-    logread | grep xkeen_rotate | tail -30
-    exit 0
-elif [ "$1" = "logsf" ]; then
-    logread -f | grep xkeen_rotate
-    exit 0
-elif [ "$1" = "edit" ]; then
-    vi $SCRIPT_DIR/xkeen_rotate.sh
     exit 0
 elif [ -n "$1" ]; then
     echo "Неизвестная команда: $1"
@@ -244,11 +251,9 @@ elif [ -n "$1" ]; then
     echo "  prosto status       - показать статус"
     echo "  prosto force        - принудительная ротация"
     echo "  prosto test         - тестовое уведомление"
-    echo "  prosto sync <URL>   - синхронизация подписки"
-    echo "  prosto cleanup      - очистка технических серверов"
-    echo "  prosto logs         - последние 30 строк логов"
-    echo "  prosto logsf        - логи в реальном времени"
-    echo "  prosto edit         - редактировать настройки"
+    echo "  prosto sync         - синхронизация (использует сохранённый URL)"
+    echo "  prosto seturl <URL> - установить URL подписки"
+    echo "  prosto cleanup      - очистка файлов"
     exit 1
 fi
 
@@ -266,7 +271,8 @@ while true; do
             ;;
         2)
             show_header
-            $SCRIPT_DIR/xkeen_rotate.sh --force
+            printf "${BLUE}Принудительная ротация серверов...${RESET}\n\n"
+            $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
@@ -280,10 +286,13 @@ while true; do
             ;;
         4)
             show_header
-            printf "${BLUE}Введите URL подписки: ${RESET}"
-            read -r url
-            if [ -n "$url" ]; then
-                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+            SAVED_URL=$(get_subscription_url)
+            if [ -n "$SAVED_URL" ]; then
+                printf "${BLUE}Синхронизация подписки...${RESET}\n\n"
+                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
+            else
+                printf "${RED}URL подписки не настроен!${RESET}\n"
+                printf "Используйте пункт 5 для настройки ссылки подписки.\n"
             fi
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
@@ -291,63 +300,37 @@ while true; do
             ;;
         5)
             show_header
-            $SCRIPT_DIR/xkeen_rotate.sh --cleanup
+            CURRENT_URL=$(get_subscription_url)
+            if [ -n "$CURRENT_URL" ]; then
+                printf "${GRAY}Текущая ссылка: ${CURRENT_URL}${RESET}\n\n"
+            fi
+            printf "${BLUE}Введите новый URL подписки: ${RESET}"
+            read -r url
+            if [ -n "$url" ]; then
+                save_subscription_url "$url"
+                printf "${GREEN}URL подписки сохранён!${RESET}\n"
+                echo ""
+                printf "${BLUE}Выполнить синхронизацию сейчас? (y/n): ${RESET}"
+                read -r dosync
+                if [ "$dosync" = "y" ] || [ "$dosync" = "Y" ]; then
+                    $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+                fi
+            else
+                printf "${YELLOW}URL не введён, настройка отменена.${RESET}\n"
+            fi
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         6)
             show_header
-            logread | grep xkeen_rotate | tail -30
+            printf "${BLUE}Очистка лишних файлов...${RESET}\n\n"
+            $SCRIPT_DIR/xkeen_rotate.sh --cleanup
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         7)
-            show_header
-            printf "${GREEN}Логи в реальном времени (Ctrl+C для выхода)${RESET}\n\n"
-            logread -f | grep xkeen_rotate
-            ;;
-        8)
-            show_header
-            printf "${BLUE}Логи мониторинга сети (последние 50 строк):${RESET}\n\n"
-            logread | grep -E "network_watchdog|startup_notify|xkeen_restart" | tail -50
-            echo ""
-            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
-            read -r dummy
-            ;;
-        9)
-            show_header
-            printf "${BLUE}Перезапуск xkeen с логированием...${RESET}\n\n"
-            if [ -f "$SCRIPT_DIR/xkeen_restart.sh" ]; then
-                $SCRIPT_DIR/xkeen_restart.sh
-            else
-                /opt/bin/xkeen -restart
-            fi
-            echo ""
-            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
-            read -r dummy
-            ;;
-        10)
-            vi $SCRIPT_DIR/xkeen_rotate.sh
-            ;;
-        11)
-            show_header
-            printf "${BLUE}Выберите скрипт для редактирования:${RESET}\n\n"
-            printf "${BLUE}1)${RESET} network_watchdog.sh (мониторинг сети)\n"
-            printf "${BLUE}2)${RESET} startup_notify.sh (уведомления о старте)\n"
-            printf "${BLUE}3)${RESET} xkeen_restart.sh (логирование перезапуска)\n"
-            echo ""
-            printf "${BLUE}Выбор: ${RESET}"
-            read -r subchoice
-            case $subchoice in
-                1) vi $SCRIPT_DIR/network_watchdog.sh ;;
-                2) vi $SCRIPT_DIR/startup_notify.sh ;;
-                3) vi $SCRIPT_DIR/xkeen_restart.sh ;;
-                *) echo "Отмена" ;;
-            esac
-            ;;
-        12)
             show_header
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
@@ -616,9 +599,14 @@ else
     sleep 1
 fi
 
+SUBSCRIPTION_FILE="$INSTALL_DIR/.subscription_url"
 SUBSCRIPTION_URL=$(dialog_inputbox "Настройка подписки" "Введите URL подписки на серверы (или оставьте пустым для настройки позже):" "")
 
 if [ -n "$SUBSCRIPTION_URL" ]; then
+    # Сохраняем URL подписки для будущего использования
+    echo "$SUBSCRIPTION_URL" > "$SUBSCRIPTION_FILE"
+    log "URL подписки сохранён в $SUBSCRIPTION_FILE"
+    
     show_header
     show_section "Загрузка серверов из подписки"
     log "Загружаю серверы из подписки..."
@@ -634,13 +622,43 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
         
         countdown 5
         
-        if dialog_yesno "Активация сервера" "Активировать первый доступный сервер сейчас?"; then
+        if dialog_yesno "Активация сервера" "Активировать сервер с лучшим ping сейчас?"; then
             show_header
             show_section "Активация сервера"
-            log "Активирую сервер..."
-            ./xkeen_rotate.sh
-            log "✓ Сервер активирован"
-            SERVER_ACTIVATED=1
+            log "Выбираю сервер с наименьшим ping..."
+            printf "${BLUE}Измерение ping до всех серверов...${RESET}\n"
+            echo ""
+            ACTIVATE_RESULT=0
+            ./xkeen_rotate.sh --force --verbose || ACTIVATE_RESULT=$?
+            
+            if [ $ACTIVATE_RESULT -eq 0 ]; then
+                log "✓ Сервер активирован"
+                SERVER_ACTIVATED=1
+                
+                # Отправляем уведомление о первой активации
+                ACTIVATED_CC=""
+                ACTIVATED_TGT=""
+                [ -f "/tmp/xkeen_current_country" ] && ACTIVATED_CC=$(cat "/tmp/xkeen_current_country" 2>/dev/null)
+                [ -f "$CONFIG_DIR/configs/04_outbounds.target" ] && ACTIVATED_TGT=$(head -n1 "$CONFIG_DIR/configs/04_outbounds.target" 2>/dev/null | tr -d '\r\n')
+                
+                if [ -n "$TG_TOPIC_ID" ] && [ -n "$ACTIVATED_CC" ]; then
+                    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+                    NOTIFY_MSG="🟩 <b>ПЕРВИЧНАЯ НАСТРОЙКА ЗАВЕРШЕНА</b>
+
+<b>Система успешно настроена!</b>
+Активирован сервер: $ACTIVATED_CC ($ACTIVATED_TGT)
+
+⏰ $TIMESTAMP"
+                    curl -s -X POST "https://api.telegram.org/bot7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U/sendMessage" \
+                        -d "chat_id=-1002517339071" \
+                        -d "message_thread_id=$TG_TOPIC_ID" \
+                        -d "text=$NOTIFY_MSG" \
+                        -d "parse_mode=HTML" >/dev/null 2>&1
+                    log "Уведомление о первой активации отправлено"
+                fi
+            else
+                log "⚠ Не удалось активировать сервер"
+            fi
             countdown 5
             
             if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
@@ -709,9 +727,8 @@ if dialog_yesno "Настройка автоматической ротации"
     echo "" >> "$TEMP_CRON"
     echo "$CRON_SCHEDULE $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
     
-    if [ -n "$SUBSCRIPTION_URL" ]; then
-        echo "0 3 * * * $INSTALL_DIR/xkeen_rotate.sh --sync-url=\"$SUBSCRIPTION_URL\" >/dev/null 2>&1" >> "$TEMP_CRON"
-    fi
+    # Ежедневная синхронизация подписки в 3:00 (читает URL из файла)
+    echo "0 3 * * * [ -f $INSTALL_DIR/.subscription_url ] && $INSTALL_DIR/xkeen_rotate.sh --sync-url=\"\$(cat $INSTALL_DIR/.subscription_url)\" >/dev/null 2>&1" >> "$TEMP_CRON"
     
     if [ "$SETUP_AUTOSTART" -eq 1 ]; then
         echo "@reboot sleep 120 && $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
