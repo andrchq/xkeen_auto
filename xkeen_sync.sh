@@ -115,56 +115,6 @@ EOF
     log "✓ Создан $OUT_FILE"
 }
 
-is_technical_server() {
-    CC="$1"
-    
-    # Список технических/запрещённых названий (не страны/города)
-    TECHNICAL_NAMES="WIFI|WiFi|wifi|PROXY|proxy|TEST|test|LOCAL|local|VPN|vpn|SERVER|server|NODE|node|DIRECT|direct|BLOCK|block|REJECT|reject|AUTO|auto|BEST|best|FAST|fast|LOAD|load|BALANCE|balance"
-    
-    # Проверяем на технические названия
-    echo "$CC" | grep -qiE "^($TECHNICAL_NAMES)$" && return 0
-    
-    # Содержит спецсимволы
-    echo "$CC" | grep -q '%' && return 0
-    
-    # Только цифры, нижний регистр или подчёркивания
-    echo "$CC" | grep -qE '^[0-9_a-z]+$' && return 0
-    
-    # Содержит точку
-    echo "$CC" | grep -q '\.' && return 0
-    
-    # Содержит квадратные скобки
-    echo "$CC" | grep -qE '[\[\]]' && return 0
-    
-    # Слишком короткое или слишком длинное
-    CC_LEN=$(echo "$CC" | wc -c)
-    [ "$CC_LEN" -lt 3 ] || [ "$CC_LEN" -gt 15 ] && return 0
-    
-    # Список допустимых стран/городов
-    VALID_COUNTRIES="USA|US|GERMANY|DE|RUSSIA|RU|FRANCE|FR|NETHERLANDS|NL|UK|GB|JAPAN|JP|SINGAPORE|SG|CANADA|CA|AUSTRALIA|AU|BRAZIL|BR|INDIA|IN|CHINA|CN|KOREA|KR|ITALY|IT|SPAIN|ES|POLAND|PL|SWEDEN|SE|NORWAY|NO|FINLAND|FI|DENMARK|DK|AUSTRIA|AT|SWITZERLAND|CH|BELGIUM|BE|IRELAND|IE|PORTUGAL|PT|GREECE|GR|CZECH|CZ|ROMANIA|RO|HUNGARY|HU|BULGARIA|BG|UKRAINE|UA|TURKEY|TR|ISRAEL|IL|UAE|DUBAI|HONG|HK|TAIWAN|TW|THAILAND|TH|VIETNAM|VN|INDONESIA|ID|MALAYSIA|MY|PHILIPPINES|PH|MEXICO|MX|ARGENTINA|AR|CHILE|CL|COLOMBIA|CO|PERU|PE|SOUTH|AFRICA|ZA|EGYPT|EG|MOROCCO|MA|NIGERIA|NG|KENYA|KE|LITVA|LATVIA|LV|LITHUANIA|LT|ESTONIA|EE|KAZAHSTAN|KAZAKHSTAN|KZ|UZBEKISTAN|UZ|GEORGIA|ARMENIA|AM|AZERBAIJAN|AZ|BELARUS|BY|MOLDOVA|MD|SERBIA|RS|CROATIA|HR|SLOVENIA|SI|SLOVAKIA|SK|CYPRUS|CY|MALTA|MT|LUXEMBOURG|LU|ICELAND|MOSCOW|BERLIN|LONDON|PARIS|AMSTERDAM|TOKYO|SEOUL|BEIJING|SHANGHAI|MUMBAI|SYDNEY|TORONTO|VANCOUVER|MIAMI|DALLAS|CHICAGO|ATLANTA|SEATTLE|DENVER|PHOENIX|BOSTON|WASHINGTON|NEWYORK|LOSANGELES|SANFRANCISCO|FRANKFURT|MUNICH|VIENNA|ZURICH|GENEVA|BRUSSELS|DUBLIN|LISBON|MADRID|BARCELONA|ROME|MILAN|PRAGUE|WARSAW|BUDAPEST|BUCHAREST|SOFIA|HELSINKI|STOCKHOLM|OSLO|COPENHAGEN"
-    
-    # Если похоже на страну/город - НЕ технический
-    echo "$CC" | grep -qiE "^($VALID_COUNTRIES)" && return 1
-    
-    # По умолчанию - технический
-    return 0
-}
-
-cleanup_before_sync() {
-    log "Очистка технических серверов перед синхронизацией..."
-    CLEANED=0
-    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
-        [ -f "$f" ] || continue
-        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
-        if is_technical_server "$CC"; then
-            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.json"
-            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.target"
-            CLEANED=$((CLEANED + 1))
-        fi
-    done
-    [ "$CLEANED" -gt 0 ] && log "Удалено технических серверов: $CLEANED"
-}
-
 sync_subscription() {
     SUBSCRIPTION_URL="$1"
     if [ -z "$SUBSCRIPTION_URL" ]; then

@@ -255,6 +255,81 @@ do_full_cleanup() {
     echo "=== Очистка завершена ==="
 }
 
+# Полная очистка файлов
+do_full_cleanup() {
+    echo "=== Очистка файлов ==="
+    echo ""
+    CLEANED=0
+    
+    # 1. Удаление технических серверов
+    echo "1. Удаление технических серверов..."
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        if is_technical_server "$CC"; then
+            echo "   Удаляю: $CC"
+            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.json"
+            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+            CLEANED=$((CLEANED + 1))
+        fi
+    done
+    echo "   Удалено технических серверов: $CLEANED"
+    
+    # 2. Удаление .json без соответствующих .target
+    echo ""
+    echo "2. Удаление файлов без пары..."
+    ORPHANS=0
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        TARGET_FILE="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+        if [ ! -f "$TARGET_FILE" ]; then
+            echo "   Удаляю (нет .target): $CC"
+            rm -f "$f"
+            ORPHANS=$((ORPHANS + 1))
+        fi
+    done
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.target; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.target$/\1/p')
+        JSON_FILE="${AVAILABLE_DIR}/04_outbounds_${CC}.json"
+        if [ ! -f "$JSON_FILE" ]; then
+            echo "   Удаляю (нет .json): $CC.target"
+            rm -f "$f"
+            ORPHANS=$((ORPHANS + 1))
+        fi
+    done
+    echo "   Удалено файлов-сирот: $ORPHANS"
+    
+    # 3. Очистка старых бэкапов
+    echo ""
+    echo "3. Очистка старых бэкапов..."
+    if [ -d "$BACKUP_DIR" ]; then
+        BACKUP_COUNT=$(find "$BACKUP_DIR" -name "*.bak" -type f 2>/dev/null | wc -l)
+        find "$BACKUP_DIR" -name "*.bak" -type f -mtime +7 -delete 2>/dev/null
+        BACKUP_AFTER=$(find "$BACKUP_DIR" -name "*.bak" -type f 2>/dev/null | wc -l)
+        echo "   Было бэкапов: $BACKUP_COUNT, осталось: $BACKUP_AFTER"
+    else
+        echo "   Папка бэкапов не существует"
+    fi
+    
+    # 4. Очистка логов
+    echo ""
+    echo "4. Очистка старых логов..."
+    LOG_DIRS="/opt/root/xkeen_logs"
+    if [ -d "$LOG_DIRS" ]; then
+        OLD_LOGS=$(find "$LOG_DIRS" -name "*.log" -type f -mtime +7 2>/dev/null | wc -l)
+        find "$LOG_DIRS" -name "*.log" -type f -mtime +7 -delete 2>/dev/null
+        find "$LOG_DIRS" -name "*.log.gz" -type f -mtime +14 -delete 2>/dev/null
+        echo "   Удалено старых логов: $OLD_LOGS"
+    else
+        echo "   Папка логов не существует"
+    fi
+    
+    echo ""
+    echo "=== Очистка завершена ==="
+}
+
 send_telegram() {
     [ "$TG_ENABLED" -ne 1 ] && return 0
     [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && return 0
