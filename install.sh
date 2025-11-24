@@ -622,13 +622,43 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
         
         countdown 5
         
-        if dialog_yesno "Активация сервера" "Активировать первый доступный сервер сейчас?"; then
+        if dialog_yesno "Активация сервера" "Активировать сервер с лучшим ping сейчас?"; then
             show_header
             show_section "Активация сервера"
-            log "Активирую сервер..."
-            ./xkeen_rotate.sh
-            log "✓ Сервер активирован"
-            SERVER_ACTIVATED=1
+            log "Выбираю сервер с наименьшим ping..."
+            printf "${BLUE}Измерение ping до всех серверов...${RESET}\n"
+            echo ""
+            ./xkeen_rotate.sh --force --verbose
+            ACTIVATE_RESULT=$?
+            
+            if [ $ACTIVATE_RESULT -eq 0 ]; then
+                log "✓ Сервер активирован"
+                SERVER_ACTIVATED=1
+                
+                # Отправляем уведомление о первой активации
+                ACTIVATED_CC=""
+                ACTIVATED_TGT=""
+                [ -f "/tmp/xkeen_current_country" ] && ACTIVATED_CC=$(cat "/tmp/xkeen_current_country" 2>/dev/null)
+                [ -f "$CONFIG_DIR/configs/04_outbounds.target" ] && ACTIVATED_TGT=$(head -n1 "$CONFIG_DIR/configs/04_outbounds.target" 2>/dev/null | tr -d '\r\n')
+                
+                if [ -n "$TG_TOPIC_ID" ] && [ -n "$ACTIVATED_CC" ]; then
+                    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+                    NOTIFY_MSG="🟩 <b>ПЕРВИЧНАЯ НАСТРОЙКА ЗАВЕРШЕНА</b>
+
+<b>Система успешно настроена!</b>
+Активирован сервер: $ACTIVATED_CC ($ACTIVATED_TGT)
+
+⏰ $TIMESTAMP"
+                    curl -s -X POST "https://api.telegram.org/bot7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U/sendMessage" \
+                        -d "chat_id=-1002517339071" \
+                        -d "message_thread_id=$TG_TOPIC_ID" \
+                        -d "text=$NOTIFY_MSG" \
+                        -d "parse_mode=HTML" >/dev/null 2>&1
+                    log "Уведомление о первой активации отправлено"
+                fi
+            else
+                log "⚠ Не удалось активировать сервер"
+            fi
             countdown 5
             
             if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
