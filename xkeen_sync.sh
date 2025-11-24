@@ -4,6 +4,9 @@
 SUBSCRIPTION_URL=""                                 # URL подписки (передаётся через аргумент)
 AVAILABLE_DIR="/opt/etc/xray/outbounds_available"  # куда сохранять outbound файлы
 STATE_FILE="/tmp/xkeen_current_country"             # текущее состояние
+SUBSCRIPTION_FILE="/opt/root/scripts/.subscription_url"  # файл с сохранённым URL
+ACTIVE_FILE="/opt/etc/xray/configs/04_outbounds.json"    # активная конфигурация
+ACTIVE_TARGET="/opt/etc/xray/configs/04_outbounds.target" # активный target
 # ---------- Конец настроек ----------
 
 log() { 
@@ -112,6 +115,32 @@ EOF
     log "✓ Создан $OUT_FILE"
 }
 
+is_technical_server() {
+    CC="$1"
+    echo "$CC" | grep -q '%' && return 0
+    echo "$CC" | grep -qE '^[0-9_a-z]+$' && return 0
+    echo "$CC" | grep -q '\.' && return 0
+    echo "$CC" | grep -qE '[\[\]]' && return 0
+    CC_LEN=$(echo "$CC" | wc -c)
+    [ "$CC_LEN" -lt 3 ] || [ "$CC_LEN" -gt 10 ] && return 0
+    return 1
+}
+
+cleanup_before_sync() {
+    log "Очистка технических серверов перед синхронизацией..."
+    CLEANED=0
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        if is_technical_server "$CC"; then
+            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.json"
+            rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+            CLEANED=$((CLEANED + 1))
+        fi
+    done
+    [ "$CLEANED" -gt 0 ] && log "Удалено технических серверов: $CLEANED"
+}
+
 sync_subscription() {
     SUBSCRIPTION_URL="$1"
     if [ -z "$SUBSCRIPTION_URL" ]; then
@@ -121,6 +150,9 @@ sync_subscription() {
     fi
     log "Загрузка подписки: $SUBSCRIPTION_URL"
     mkdir -p "$AVAILABLE_DIR"
+    
+    # Очистка перед синхронизацией
+    cleanup_before_sync
     SUBSCRIPTION_DATA=$(curl -sL "$SUBSCRIPTION_URL" | base64 -d 2>/dev/null)
     if [ -z "$SUBSCRIPTION_DATA" ]; then
         log "Ошибка: не удалось загрузить или декодировать подписку"
@@ -161,18 +193,30 @@ sync_subscription() {
     fi
 }
 
-if [ $# -eq 0 ]; then
+# Определяем URL подписки
+if [ -n "$1" ]; then
+    # URL передан как аргумент
+    SYNC_URL="$1"
+elif [ -f "$SUBSCRIPTION_FILE" ]; then
+    # Читаем из сохранённого файла
+    SYNC_URL=$(cat "$SUBSCRIPTION_FILE" 2>/dev/null | tr -d '\n\r')
+    if [ -n "$SYNC_URL" ]; then
+        log "Используется сохранённый URL подписки"
+    fi
+fi
+
+if [ -z "$SYNC_URL" ]; then
     echo "Скрипт синхронизации подписок xkeen"
     echo ""
     echo "Использование:"
-    echo "  $0 <URL_подписки>"
+    echo "  $0 <URL_подписки>    - синхронизация с указанным URL"
+    echo "  $0                   - синхронизация с сохранённым URL"
     echo ""
-    echo "Пример:"
-    echo "  $0 https://ya.prsta.xyz/onln/cHJzdGEueHl6LDE3NjI0NDM5MDU3dd9AqISdh"
+    echo "URL подписки можно сохранить через команду: prosto seturl <URL>"
     echo ""
     echo "Скрипт загрузит подписку, декодирует и создаст outbound файлы"
     echo "в директории: $AVAILABLE_DIR"
     exit 0
 fi
 
-sync_subscription "$1"
+sync_subscription "$SYNC_URL"
