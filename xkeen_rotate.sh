@@ -456,7 +456,7 @@ if [ "$TEST_NOTIFY" -eq 1 ]; then
 
 <b>Уведомления работают корректно.</b>"
     if [ "$TG_ENABLED" -eq 1 ]; then
-        echo "✓ Тестовое уведомление отправлено в топик $TG_TOPIC_ID группы $TG_CHAT_ID"
+        echo "✓ Тестовое уведомление отправлено!"
     else
         printf "✗ Telegram уведомления отключены (TG_ENABLED=0)\n"
     fi
@@ -586,10 +586,10 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
         echo ""
         echo "╔════════════════════════════════════════════════════════════╗"
         echo "║                    СМЕНА СЕРВЕРА                           ║"
-        echo "╠════════════════════════════════════════════════════════════╣"
-        echo "║  С:  $CURRENT_CC"
-        echo "║  На: $CC [ping: ${PING_MS}ms]"
         echo "╚════════════════════════════════════════════════════════════╝"
+        echo "      С:  $CURRENT_CC"                                          
+        echo "      На: $CC [ping: ${PING_MS}ms]"                             
+        echo ""
         echo ""
     else
         echo ""
