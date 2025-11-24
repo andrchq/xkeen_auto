@@ -1,12 +1,21 @@
 #!/bin/sh
 
 SCRIPT_DIR="/opt/root/scripts"
+GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
+VERSION_FILE="$SCRIPT_DIR/.version"
+UPDATE_CHECK_FILE="/tmp/prosto_update_check"
+SUBSCRIPTION_FILE="$SCRIPT_DIR/.subscription_url"
+
 GRAY="\033[90m"
 BLUE="\033[94m"
 GREEN="\033[92m"
 YELLOW="\033[93m"
+RED="\033[91m"
 RESET="\033[0m"
 BOLD="\033[1m"
+
+# Список файлов для проверки обновлений
+CHECK_FILES="xkeen_rotate.sh xkeen_sync.sh network_watchdog.sh startup_notify.sh xkeen_restart.sh"
 
 show_header() {
     clear
@@ -16,6 +25,142 @@ show_header() {
     echo ""
 }
 
+get_subscription_url() {
+    if [ -f "$SUBSCRIPTION_FILE" ]; then
+        cat "$SUBSCRIPTION_FILE" 2>/dev/null | tr -d '\n\r'
+    fi
+}
+
+save_subscription_url() {
+    echo "$1" > "$SUBSCRIPTION_FILE"
+}
+
+# Получить хеш файла (первые 8 символов md5)
+get_file_hash() {
+    if [ -f "$1" ]; then
+        md5sum "$1" 2>/dev/null | cut -c1-8
+    else
+        echo "none"
+    fi
+}
+
+# Проверка обновлений
+check_for_updates() {
+    # Проверяем не чаще раза в час
+    if [ -f "$UPDATE_CHECK_FILE" ]; then
+        LAST_CHECK=$(cat "$UPDATE_CHECK_FILE" 2>/dev/null)
+        CURRENT_TIME=$(date +%s)
+        if [ -n "$LAST_CHECK" ] && [ "$CURRENT_TIME" -lt "$((LAST_CHECK + 3600))" ]; then
+            return 1
+        fi
+    fi
+    
+    # Сохраняем время проверки
+    date +%s > "$UPDATE_CHECK_FILE"
+    
+    # Проверяем наличие интернета
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    UPDATE_AVAILABLE=0
+    UPDATED_FILES=""
+    
+    for file in $CHECK_FILES; do
+        LOCAL_FILE="$SCRIPT_DIR/$file"
+        if [ -f "$LOCAL_FILE" ]; then
+            LOCAL_HASH=$(get_file_hash "$LOCAL_FILE")
+            # Скачиваем удалённый файл во временную директорию
+            REMOTE_FILE="/tmp/prosto_check_$file"
+            if curl -sL --max-time 5 "$GITHUB_RAW/$file" -o "$REMOTE_FILE" 2>/dev/null; then
+                REMOTE_HASH=$(get_file_hash "$REMOTE_FILE")
+                if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ "$REMOTE_HASH" != "none" ]; then
+                    UPDATE_AVAILABLE=1
+                    UPDATED_FILES="$UPDATED_FILES $file"
+                fi
+                rm -f "$REMOTE_FILE"
+            fi
+        fi
+    done
+    
+    if [ "$UPDATE_AVAILABLE" -eq 1 ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Предложить обновление
+offer_update() {
+    printf "\n${YELLOW}╔════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${YELLOW}║${RESET}  ${BOLD}🔄 Доступно обновление!${RESET}                                   ${YELLOW}║${RESET}\n"
+    printf "${YELLOW}╚════════════════════════════════════════════════════════════╝${RESET}\n"
+    printf "\n${BLUE}Обновить систему сейчас? (y/n): ${RESET}"
+    read -r answer
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        run_update
+    fi
+}
+
+# Запустить обновление
+run_update() {
+    printf "\n${GREEN}Запускаю обновление...${RESET}\n\n"
+    # Сбрасываем время проверки чтобы после обновления не проверять снова
+    rm -f "$UPDATE_CHECK_FILE"
+    # Запускаем установщик
+    curl -sSL "$GITHUB_RAW/install.sh" | sh
+    exit 0
+}
+
+# Принудительная проверка обновлений
+force_check_updates() {
+    printf "${BLUE}Проверка обновлений...${RESET}\n\n"
+    rm -f "$UPDATE_CHECK_FILE"
+    
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        printf "${RED}Нет подключения к интернету${RESET}\n"
+        return 1
+    fi
+    
+    UPDATE_AVAILABLE=0
+    UPDATED_FILES=""
+    
+    for file in $CHECK_FILES; do
+        LOCAL_FILE="$SCRIPT_DIR/$file"
+        printf "  Проверяю ${BLUE}$file${RESET}... "
+        if [ -f "$LOCAL_FILE" ]; then
+            LOCAL_HASH=$(get_file_hash "$LOCAL_FILE")
+            REMOTE_FILE="/tmp/prosto_check_$file"
+            if curl -sL --max-time 5 "$GITHUB_RAW/$file" -o "$REMOTE_FILE" 2>/dev/null; then
+                REMOTE_HASH=$(get_file_hash "$REMOTE_FILE")
+                if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ "$REMOTE_HASH" != "none" ]; then
+                    printf "${YELLOW}обновление доступно${RESET}\n"
+                    UPDATE_AVAILABLE=1
+                    UPDATED_FILES="$UPDATED_FILES $file"
+                else
+                    printf "${GREEN}актуален${RESET}\n"
+                fi
+                rm -f "$REMOTE_FILE"
+            else
+                printf "${RED}ошибка загрузки${RESET}\n"
+            fi
+        else
+            printf "${RED}не установлен${RESET}\n"
+        fi
+    done
+    
+    echo ""
+    if [ "$UPDATE_AVAILABLE" -eq 1 ]; then
+        printf "${YELLOW}Найдены обновления для:${RESET}$UPDATED_FILES\n\n"
+        printf "${BLUE}Обновить сейчас? (y/n): ${RESET}"
+        read -r answer
+        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+            run_update
+        fi
+    else
+        printf "${GREEN}✓ Все файлы актуальны!${RESET}\n"
+    fi
+}
+
 show_menu() {
     show_header
     printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET}\n\n"
@@ -23,43 +168,48 @@ show_menu() {
     printf "${BLUE}2)${RESET} Принудительная ротация\n"
     printf "${BLUE}3)${RESET} Тестовое уведомление\n"
     printf "${BLUE}4)${RESET} Синхронизация подписки\n"
-    printf "${BLUE}5)${RESET} Очистка технических серверов\n"
-    printf "${BLUE}6)${RESET} Просмотр логов (последние 30 строк)\n"
-    printf "${BLUE}7)${RESET} Просмотр логов (в реальном времени)\n"
-    printf "${BLUE}8)${RESET} Редактировать настройки\n"
-    printf "${BLUE}9)${RESET} О системе\n"
+    printf "${BLUE}5)${RESET} Смена ссылки подписки\n"
+    printf "${BLUE}6)${RESET} Очистка файлов\n"
+    printf "${BLUE}7)${RESET} Проверить обновления\n"
+    printf "${BLUE}8)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
 }
 
+# Обработка команд из командной строки
 if [ "$1" = "status" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --status
     exit 0
 elif [ "$1" = "force" ]; then
-    $SCRIPT_DIR/xkeen_rotate.sh --force
+    $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
     exit 0
 elif [ "$1" = "test" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --test-notify
     exit 0
 elif [ "$1" = "sync" ]; then
-    if [ -n "$2" ]; then
-        $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$2"
+    SAVED_URL=$(get_subscription_url)
+    if [ -n "$SAVED_URL" ]; then
+        $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
     else
-        echo "Использование: prosto sync <URL>"
+        printf "${RED}Ошибка: URL подписки не настроен.${RESET}\n"
+        echo "Используйте: prosto seturl <URL>"
+    fi
+    exit 0
+elif [ "$1" = "seturl" ]; then
+    if [ -n "$2" ]; then
+        save_subscription_url "$2"
+        printf "${GREEN}URL подписки сохранён.${RESET}\n"
+    else
+        echo "Использование: prosto seturl <URL>"
     fi
     exit 0
 elif [ "$1" = "cleanup" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --cleanup
     exit 0
-elif [ "$1" = "logs" ]; then
-    logread | grep xkeen_rotate | tail -30
-    exit 0
-elif [ "$1" = "logsf" ]; then
-    logread -f | grep xkeen_rotate
-    exit 0
-elif [ "$1" = "edit" ]; then
-    vi $SCRIPT_DIR/xkeen_rotate.sh
+elif [ "$1" = "update" ]; then
+    show_header
+    force_check_updates
     exit 0
 elif [ -n "$1" ]; then
     echo "Неизвестная команда: $1"
@@ -69,14 +219,20 @@ elif [ -n "$1" ]; then
     echo "  prosto status       - показать статус"
     echo "  prosto force        - принудительная ротация"
     echo "  prosto test         - тестовое уведомление"
-    echo "  prosto sync <URL>   - синхронизация подписки"
-    echo "  prosto cleanup      - очистка технических серверов"
-    echo "  prosto logs         - последние 30 строк логов"
-    echo "  prosto logsf        - логи в реальном времени"
-    echo "  prosto edit         - редактировать настройки"
+    echo "  prosto sync         - синхронизация (использует сохранённый URL)"
+    echo "  prosto seturl <URL> - установить URL подписки"
+    echo "  prosto cleanup      - очистка файлов"
+    echo "  prosto update       - проверить обновления"
     exit 1
 fi
 
+# Проверка обновлений при запуске (не чаще раза в час)
+if check_for_updates; then
+    show_header
+    offer_update
+fi
+
+# Основной цикл меню
 while true; do
     show_menu
     read -r choice
@@ -91,7 +247,8 @@ while true; do
             ;;
         2)
             show_header
-            $SCRIPT_DIR/xkeen_rotate.sh --force
+            printf "${BLUE}Принудительная ротация серверов...${RESET}\n\n"
+            $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
@@ -105,10 +262,13 @@ while true; do
             ;;
         4)
             show_header
-            printf "${BLUE}Введите URL подписки: ${RESET}"
-            read -r url
-            if [ -n "$url" ]; then
-                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+            SAVED_URL=$(get_subscription_url)
+            if [ -n "$SAVED_URL" ]; then
+                printf "${BLUE}Синхронизация подписки...${RESET}\n\n"
+                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
+            else
+                printf "${RED}URL подписки не настроен!${RESET}\n"
+                printf "Используйте пункт 5 для настройки ссылки подписки.\n"
             fi
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
@@ -116,27 +276,44 @@ while true; do
             ;;
         5)
             show_header
-            $SCRIPT_DIR/xkeen_rotate.sh --cleanup
+            CURRENT_URL=$(get_subscription_url)
+            if [ -n "$CURRENT_URL" ]; then
+                printf "${GRAY}Текущая ссылка: ${CURRENT_URL}${RESET}\n\n"
+            fi
+            printf "${BLUE}Введите новый URL подписки: ${RESET}"
+            read -r url
+            if [ -n "$url" ]; then
+                save_subscription_url "$url"
+                printf "${GREEN}URL подписки сохранён!${RESET}\n"
+                echo ""
+                printf "${BLUE}Выполнить синхронизацию сейчас? (y/n): ${RESET}"
+                read -r dosync
+                if [ "$dosync" = "y" ] || [ "$dosync" = "Y" ]; then
+                    $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+                fi
+            else
+                printf "${YELLOW}URL не введён, настройка отменена.${RESET}\n"
+            fi
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         6)
             show_header
-            logread | grep xkeen_rotate | tail -30
+            printf "${BLUE}Очистка лишних файлов...${RESET}\n\n"
+            $SCRIPT_DIR/xkeen_rotate.sh --cleanup
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         7)
             show_header
-            printf "${GREEN}Логи в реальном времени (Ctrl+C для выхода)${RESET}\n\n"
-            logread -f | grep xkeen_rotate
+            force_check_updates
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
             ;;
         8)
-            vi $SCRIPT_DIR/xkeen_rotate.sh
-            ;;
-        9)
             show_header
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
@@ -159,4 +336,3 @@ while true; do
             ;;
     esac
 done
-

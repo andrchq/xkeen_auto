@@ -172,7 +172,10 @@ create_prosto_command() {
 #!/bin/sh
 
 SCRIPT_DIR="/opt/root/scripts"
+GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
+UPDATE_CHECK_FILE="/tmp/prosto_update_check"
 SUBSCRIPTION_FILE="$SCRIPT_DIR/.subscription_url"
+
 GRAY="\033[90m"
 BLUE="\033[94m"
 GREEN="\033[92m"
@@ -180,6 +183,8 @@ YELLOW="\033[93m"
 RED="\033[91m"
 RESET="\033[0m"
 BOLD="\033[1m"
+
+CHECK_FILES="xkeen_rotate.sh xkeen_sync.sh network_watchdog.sh startup_notify.sh xkeen_restart.sh"
 
 show_header() {
     clear
@@ -199,6 +204,108 @@ save_subscription_url() {
     echo "$1" > "$SUBSCRIPTION_FILE"
 }
 
+get_file_hash() {
+    if [ -f "$1" ]; then
+        md5sum "$1" 2>/dev/null | cut -c1-8
+    else
+        echo "none"
+    fi
+}
+
+check_for_updates() {
+    if [ -f "$UPDATE_CHECK_FILE" ]; then
+        LAST_CHECK=$(cat "$UPDATE_CHECK_FILE" 2>/dev/null)
+        CURRENT_TIME=$(date +%s)
+        if [ -n "$LAST_CHECK" ] && [ "$CURRENT_TIME" -lt "$((LAST_CHECK + 3600))" ]; then
+            return 1
+        fi
+    fi
+    date +%s > "$UPDATE_CHECK_FILE"
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        return 1
+    fi
+    UPDATE_AVAILABLE=0
+    for file in $CHECK_FILES; do
+        LOCAL_FILE="$SCRIPT_DIR/$file"
+        if [ -f "$LOCAL_FILE" ]; then
+            LOCAL_HASH=$(get_file_hash "$LOCAL_FILE")
+            REMOTE_FILE="/tmp/prosto_check_$file"
+            if curl -sL --max-time 5 "$GITHUB_RAW/$file" -o "$REMOTE_FILE" 2>/dev/null; then
+                REMOTE_HASH=$(get_file_hash "$REMOTE_FILE")
+                if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ "$REMOTE_HASH" != "none" ]; then
+                    UPDATE_AVAILABLE=1
+                fi
+                rm -f "$REMOTE_FILE"
+            fi
+        fi
+    done
+    [ "$UPDATE_AVAILABLE" -eq 1 ] && return 0
+    return 1
+}
+
+offer_update() {
+    printf "\n${YELLOW}╔════════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${YELLOW}║${RESET}  ${BOLD}🔄 Доступно обновление!${RESET}                                   ${YELLOW}║${RESET}\n"
+    printf "${YELLOW}╚════════════════════════════════════════════════════════════╝${RESET}\n"
+    printf "\n${BLUE}Обновить систему сейчас? (y/n): ${RESET}"
+    read -r answer
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        run_update
+    fi
+}
+
+run_update() {
+    printf "\n${GREEN}Запускаю обновление...${RESET}\n\n"
+    rm -f "$UPDATE_CHECK_FILE"
+    curl -sSL "$GITHUB_RAW/install.sh" | sh
+    exit 0
+}
+
+force_check_updates() {
+    printf "${BLUE}Проверка обновлений...${RESET}\n\n"
+    rm -f "$UPDATE_CHECK_FILE"
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        printf "${RED}Нет подключения к интернету${RESET}\n"
+        return 1
+    fi
+    UPDATE_AVAILABLE=0
+    UPDATED_FILES=""
+    for file in $CHECK_FILES; do
+        LOCAL_FILE="$SCRIPT_DIR/$file"
+        printf "  Проверяю ${BLUE}$file${RESET}... "
+        if [ -f "$LOCAL_FILE" ]; then
+            LOCAL_HASH=$(get_file_hash "$LOCAL_FILE")
+            REMOTE_FILE="/tmp/prosto_check_$file"
+            if curl -sL --max-time 5 "$GITHUB_RAW/$file" -o "$REMOTE_FILE" 2>/dev/null; then
+                REMOTE_HASH=$(get_file_hash "$REMOTE_FILE")
+                if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ "$REMOTE_HASH" != "none" ]; then
+                    printf "${YELLOW}обновление доступно${RESET}\n"
+                    UPDATE_AVAILABLE=1
+                    UPDATED_FILES="$UPDATED_FILES $file"
+                else
+                    printf "${GREEN}актуален${RESET}\n"
+                fi
+                rm -f "$REMOTE_FILE"
+            else
+                printf "${RED}ошибка загрузки${RESET}\n"
+            fi
+        else
+            printf "${RED}не установлен${RESET}\n"
+        fi
+    done
+    echo ""
+    if [ "$UPDATE_AVAILABLE" -eq 1 ]; then
+        printf "${YELLOW}Найдены обновления для:${RESET}$UPDATED_FILES\n\n"
+        printf "${BLUE}Обновить сейчас? (y/n): ${RESET}"
+        read -r answer
+        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+            run_update
+        fi
+    else
+        printf "${GREEN}✓ Все файлы актуальны!${RESET}\n"
+    fi
+}
+
 show_menu() {
     show_header
     printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET}\n\n"
@@ -208,7 +315,8 @@ show_menu() {
     printf "${BLUE}4)${RESET} Синхронизация подписки\n"
     printf "${BLUE}5)${RESET} Смена ссылки подписки\n"
     printf "${BLUE}6)${RESET} Очистка файлов\n"
-    printf "${BLUE}7)${RESET} О системе\n"
+    printf "${BLUE}7)${RESET} Проверить обновления\n"
+    printf "${BLUE}8)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
@@ -243,6 +351,10 @@ elif [ "$1" = "seturl" ]; then
 elif [ "$1" = "cleanup" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --cleanup
     exit 0
+elif [ "$1" = "update" ]; then
+    show_header
+    force_check_updates
+    exit 0
 elif [ -n "$1" ]; then
     echo "Неизвестная команда: $1"
     echo ""
@@ -254,7 +366,13 @@ elif [ -n "$1" ]; then
     echo "  prosto sync         - синхронизация (использует сохранённый URL)"
     echo "  prosto seturl <URL> - установить URL подписки"
     echo "  prosto cleanup      - очистка файлов"
+    echo "  prosto update       - проверить обновления"
     exit 1
+fi
+
+if check_for_updates; then
+    show_header
+    offer_update
 fi
 
 while true; do
@@ -332,10 +450,18 @@ while true; do
             ;;
         7)
             show_header
+            force_check_updates
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        8)
+            show_header
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
             printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
             printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+            printf "${GREEN}GitHub:${RESET} https://github.com/andrchq/xkeen_auto\n"
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
