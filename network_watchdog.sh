@@ -45,13 +45,14 @@ send_telegram_message() {
   local text="$1"
   local extra_args=""
   if [ -n "$TG_TOPIC_ID" ] && [ "$TG_TOPIC_ID" != "0" ]; then
-    extra_args="-d message_thread_id=$TG_TOPIC_ID"
+    extra_args="&message_thread_id=$TG_TOPIC_ID"
   fi
+  # Используем --data-urlencode для правильной обработки переносов строк
   curl -s --max-time 10 -X POST "https://api.telegram.org/bot$TG_TOKEN/sendMessage" \
+    --data-urlencode "text=$text" \
     -d "chat_id=$TG_CHAT_ID" \
-    -d "text=$text" \
-    -d "parse_mode=HTML" \
-    $extra_args >/dev/null 2>&1 || echo "$text" >> "$UNSENT_FILE"
+    -d "parse_mode=HTML${extra_args}" \
+    >/dev/null 2>&1 || echo "$text" >> "$UNSENT_FILE"
 }
 
 send_telegram_file() {
@@ -61,6 +62,7 @@ send_telegram_file() {
   if [ -n "$TG_TOPIC_ID" ] && [ "$TG_TOPIC_ID" != "0" ]; then
     extra_args="-F message_thread_id=$TG_TOPIC_ID"
   fi
+  # caption с переносами строк корректно обрабатывается через -F
   curl -s --max-time 30 -X POST "https://api.telegram.org/bot$TG_TOKEN/sendDocument" \
     -F "chat_id=$TG_CHAT_ID" \
     -F "document=@$file_path" \
@@ -73,7 +75,9 @@ flush_unsent_messages() {
   if [ -s "$UNSENT_FILE" ]; then
     local bundle_file="$LOG_DIR/unsent_$(date '+%Y%m%d_%H%M%S').log"
     mv "$UNSENT_FILE" "$bundle_file"
-    send_telegram_file "$bundle_file" "📤 <b>$HUMAN_NAME:</b>\n\n<pre>Отложенные уведомления (интернет восстановлен)</pre>"
+    send_telegram_file "$bundle_file" "📤 <b>$HUMAN_NAME:</b>
+
+<pre>Отложенные уведомления (интернет восстановлен)</pre>"
   fi
 }
 
@@ -121,14 +125,21 @@ check_reboot_limit() {
 
   if [ "$count" -gt "$REBOOT_LIMIT" ]; then
     log_message "🚫 Лимит перезагрузок $REBOOT_LIMIT достигнут. Больше не перезагружаем."
-    send_telegram_message "🟧 <b>ОГРАНИЧЕНИЕ:</b>\n\n<b>Превышен лимит $REBOOT_LIMIT перезагрузок.</b>\nСкрипт прекращает перезагрузки."
+    send_telegram_message "🟧 <b>ОГРАНИЧЕНИЕ:</b>
+
+<b>Превышен лимит $REBOOT_LIMIT перезагрузок.</b>
+Скрипт прекращает перезагрузки."
     exit 0
   fi
 }
 
 reboot_router() {
   log_message "🔴 Перезагрузка роутера после 3 неудачных попыток"
-  send_telegram_message "🟥 <b>ПРЕДУПРЕЖДЕНИЕ:</b>\n\n<b>Интернет недоступен.</b>\n\nВыполняется перезагрузка роутера!"
+  send_telegram_message "🟥 <b>ПРЕДУПРЕЖДЕНИЕ:</b>
+
+<b>Интернет недоступен.</b>
+
+Выполняется перезагрузка роутера!"
   reboot
 }
 
@@ -142,8 +153,39 @@ check_xkeen_status() {
     log_message "✅ Статус xkeen: прокси запущен."
   else
     log_message "🟥 xkeen не запущен, попытка запуска"
-    send_telegram_message "🟥 <b>$HUMAN_NAME:</b>\n\n<b>xkeen не запущен!</b>\n\n<pre>$status</pre>"
+    send_telegram_message "🟥 <b>$HUMAN_NAME:</b>
+
+<b>xkeen не запущен!</b>
+
+<pre>$status</pre>"
     start_xkeen
+    
+    # Повторная проверка через 60 секунд
+    log_message "⏳ Ожидание 60 секунд для повторной проверки..."
+    sleep 60
+    
+    local status_recheck
+    status_recheck=$($XKEEN_STATUS 2>&1)
+    status_recheck=$(echo "$status_recheck" | tr -d '\033' | sed 's/\[[0-9;]*m//g' | tr -d '\r\000' | tr -s ' ')
+    log_message "Повторная проверка статуса: $status_recheck"
+    
+    if echo "$status_recheck" | grep -q "Прокси-клиент запущен"; then
+      log_message "✅ xkeen успешно восстановлен!"
+      send_telegram_message "🟩 <b>$HUMAN_NAME:</b>
+
+<b>xkeen успешно восстановлен!</b>
+
+Прокси-клиент запущен после автоматического перезапуска."
+    else
+      log_message "🟥 КРИТИЧНО: xkeen всё ещё не запущен после повторной проверки"
+      send_telegram_message "🟥 <b>$HUMAN_NAME - КРИТИЧНО:</b>
+
+<b>xkeen НЕ УДАЛОСЬ ЗАПУСТИТЬ!</b>
+
+Требуется ручное вмешательство.
+
+<pre>$status_recheck</pre>"
+    fi
   fi
 }
 
@@ -181,11 +223,16 @@ else
   echo "$ATTEMPTS" > "$COUNTER_FILE"
 
   if [ "$ATTEMPTS" -ge 3 ]; then
-    send_telegram_file "$LOG_FILE" "🟥 <b>$HUMAN_NAME:</b>\n\n<b>Интернет отсутствует после 3 попыток.</b>\nВыполняется перезагрузка."
+    send_telegram_file "$LOG_FILE" "🟥 <b>$HUMAN_NAME:</b>
+
+<b>Интернет отсутствует после 3 попыток.</b>
+Выполняется перезагрузка."
     check_reboot_limit
     reboot_router
   else
-    send_telegram_file "$LOG_FILE" "🟧 <b>$HUMAN_NAME:</b>\n\n<b>Интернет недоступен. Перезапуск xkeen.</b>"
+    send_telegram_file "$LOG_FILE" "🟧 <b>$HUMAN_NAME:</b>
+
+<b>Интернет недоступен. Перезапуск xkeen.</b>"
     restart_xkeen
   fi
 fi
