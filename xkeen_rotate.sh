@@ -325,9 +325,14 @@ show_status() {
     [ -f "$STATE_FILE" ] && CURRENT_CC="$(cat "$STATE_FILE" 2>/dev/null)"
     if [ -f "$ACTIVE_TARGET" ]; then
         CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
-        printf "Активная: $CURRENT_CC ($CUR_TGT) - "
+        CUR_PING=$(measure_ping "$CUR_TGT")
+        printf "Активная: $CURRENT_CC - "
         if health_tcp "$CUR_TGT"; then
-            echo "✓ ДОСТУПНА"
+            if [ "$CUR_PING" = "9999" ]; then
+                echo "✓ ДОСТУПНА"
+            else
+                echo "✓ ДОСТУПНА [${CUR_PING}ms]"
+            fi
         else
             echo "✗ НЕДОСТУПНА"
         fi
@@ -335,12 +340,19 @@ show_status() {
         echo "Активная: не настроена"
     fi
     echo ""
-    echo "Доступные ноды:"
+    echo "Доступные ноды (отсортированы по ping):"
+    
+    # Собираем данные с ping и сортируем
+    TEMP_STATUS="/tmp/xkeen_status_$$"
+    : > "$TEMP_STATUS"
+    
     CANDIDATES=$(ls "${AVAILABLE_DIR}"/04_outbounds_*.json 2>/dev/null)
     if [ -z "$CANDIDATES" ]; then
         echo "  Нет доступных конфигураций"
+        rm -f "$TEMP_STATUS"
         return
     fi
+    
     for cand in $CANDIDATES; do
         [ -f "$cand" ] || continue
         CC=$(basename "$cand" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
@@ -350,21 +362,34 @@ show_status() {
         fi
         CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
         if [ ! -f "$CAND_TARGET" ]; then
-            echo "  $CC: нет .target файла"
             continue
         fi
         TGT="$(head -n1 "$CAND_TARGET" | tr -d '\r\n')"
         if [ -z "$TGT" ]; then
-            echo "  $CC: .target пуст"
             continue
         fi
-        printf "  $CC ($TGT) - "
+        PING_MS=$(measure_ping "$TGT")
         if health_tcp "$TGT"; then
-            echo "✓ доступна"
+            echo "$PING_MS $CC available" >> "$TEMP_STATUS"
         else
-            echo "✗ недоступна"
+            echo "9999 $CC unavailable" >> "$TEMP_STATUS"
         fi
     done
+    
+    # Выводим отсортированный список (без IP/доменов)
+    sort -n "$TEMP_STATUS" | while read -r ping cc status; do
+        if [ "$status" = "available" ]; then
+            if [ "$ping" = "9999" ]; then
+                echo "  $cc - ✓ доступна"
+            else
+                echo "  $cc - ✓ доступна [${ping}ms]"
+            fi
+        else
+            echo "  $cc - ✗ недоступна"
+        fi
+    done
+    
+    rm -f "$TEMP_STATUS"
     exit 0
 }
 
@@ -484,9 +509,9 @@ if [ "$VERBOSE" -eq 1 ]; then
     echo "Серверы отсортированы по ping:"
     echo "$SORTED_CANDIDATES" | while read -r ping cc tgt file; do
         if [ "$ping" = "9999" ]; then
-            echo "  $cc ($tgt) - недоступен"
+            echo "  $cc - недоступен"
         else
-            echo "  $cc ($tgt) - ${ping}ms"
+            echo "  $cc - ${ping}ms"
         fi
     done
     echo ""
@@ -514,7 +539,7 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
 
     CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
 
-    verbose_print "Проверяем $CC ($NEW_TGT, ping: ${PING_MS}ms)..."
+    verbose_print "Проверяем $CC (ping: ${PING_MS}ms)..."
     log "Проверяем $CC ($NEW_TGT)..."
     
     if ! health_tcp "$NEW_TGT"; then
@@ -524,24 +549,23 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
     fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
-        printf "[TEST] Переключение на $CC ($NEW_TGT)\n"
-        echo "[TEST] Файлы: ${AVAILABLE_DIR}/04_outbounds_${CC}.json -> $ACTIVE_FILE"
+        printf "[TEST] Переключение на $CC\n"
         exit 0
     fi
     
-    # Выводим информацию о переходе
+    # Выводим информацию о переходе (без IP/доменов)
     if [ -n "$CURRENT_CC" ] && [ "$CURRENT_CC" != "$CC" ]; then
         echo ""
         echo "╔════════════════════════════════════════════════════════════╗"
         echo "║                    СМЕНА СЕРВЕРА                           ║"
         echo "╠════════════════════════════════════════════════════════════╣"
-        echo "║  С:  $CURRENT_CC ($CUR_TGT)"
-        echo "║  На: $CC ($NEW_TGT) [ping: ${PING_MS}ms]"
+        echo "║  С:  $CURRENT_CC"
+        echo "║  На: $CC [ping: ${PING_MS}ms]"
         echo "╚════════════════════════════════════════════════════════════╝"
         echo ""
     else
         echo ""
-        echo "Активация сервера: $CC ($NEW_TGT) [ping: ${PING_MS}ms]"
+        echo "Активация сервера: $CC [ping: ${PING_MS}ms]"
         echo ""
     fi
 
