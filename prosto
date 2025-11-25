@@ -14,9 +14,6 @@ RED="\033[91m"
 RESET="\033[0m"
 BOLD="\033[1m"
 
-# Список файлов для проверки обновлений
-CHECK_FILES="xkeen_rotate.sh xkeen_sync.sh network_watchdog.sh startup_notify.sh xkeen_restart.sh"
-
 show_header() {
     clear
     printf "${GRAY}╔══════════════════════════════════════════════════════════════════════════════════════╗${RESET}\n"
@@ -35,16 +32,47 @@ save_subscription_url() {
     echo "$1" > "$SUBSCRIPTION_FILE"
 }
 
-# Получить хеш файла (первые 8 символов md5)
-get_file_hash() {
-    if [ -f "$1" ]; then
-        md5sum "$1" 2>/dev/null | cut -c1-8
+# Получить локальную версию
+get_local_version() {
+    if [ -f "$VERSION_FILE" ]; then
+        cat "$VERSION_FILE" 2>/dev/null | tr -d '\n\r '
     else
-        echo "none"
+        echo "0.0.0"
     fi
 }
 
-# Проверка обновлений
+# Сравнить версии (возвращает 0 если remote > local)
+version_greater() {
+    LOCAL_VER="$1"
+    REMOTE_VER="$2"
+    
+    # Парсим версии
+    LOCAL_MAJOR=$(echo "$LOCAL_VER" | cut -d. -f1)
+    LOCAL_MINOR=$(echo "$LOCAL_VER" | cut -d. -f2)
+    LOCAL_PATCH=$(echo "$LOCAL_VER" | cut -d. -f3)
+    
+    REMOTE_MAJOR=$(echo "$REMOTE_VER" | cut -d. -f1)
+    REMOTE_MINOR=$(echo "$REMOTE_VER" | cut -d. -f2)
+    REMOTE_PATCH=$(echo "$REMOTE_VER" | cut -d. -f3)
+    
+    # Устанавливаем значения по умолчанию
+    [ -z "$LOCAL_MAJOR" ] && LOCAL_MAJOR=0
+    [ -z "$LOCAL_MINOR" ] && LOCAL_MINOR=0
+    [ -z "$LOCAL_PATCH" ] && LOCAL_PATCH=0
+    [ -z "$REMOTE_MAJOR" ] && REMOTE_MAJOR=0
+    [ -z "$REMOTE_MINOR" ] && REMOTE_MINOR=0
+    [ -z "$REMOTE_PATCH" ] && REMOTE_PATCH=0
+    
+    # Сравниваем
+    [ "$REMOTE_MAJOR" -gt "$LOCAL_MAJOR" ] && return 0
+    [ "$REMOTE_MAJOR" -lt "$LOCAL_MAJOR" ] && return 1
+    [ "$REMOTE_MINOR" -gt "$LOCAL_MINOR" ] && return 0
+    [ "$REMOTE_MINOR" -lt "$LOCAL_MINOR" ] && return 1
+    [ "$REMOTE_PATCH" -gt "$LOCAL_PATCH" ] && return 0
+    return 1
+}
+
+# Проверка обновлений по версии
 check_for_updates() {
     # Проверяем не чаще раза в час
     if [ -f "$UPDATE_CHECK_FILE" ]; then
@@ -63,37 +91,34 @@ check_for_updates() {
         return 1
     fi
     
-    UPDATE_AVAILABLE=0
-    UPDATED_FILES=""
+    # Получаем локальную версию
+    LOCAL_VERSION=$(get_local_version)
     
-    for file in $CHECK_FILES; do
-        LOCAL_FILE="$SCRIPT_DIR/$file"
-        if [ -f "$LOCAL_FILE" ]; then
-            LOCAL_HASH=$(get_file_hash "$LOCAL_FILE")
-            # Скачиваем удалённый файл во временную директорию
-            REMOTE_FILE="/tmp/prosto_check_$file"
-            if curl -sL --max-time 5 "$GITHUB_RAW/$file" -o "$REMOTE_FILE" 2>/dev/null; then
-                REMOTE_HASH=$(get_file_hash "$REMOTE_FILE")
-                if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ "$REMOTE_HASH" != "none" ]; then
-                    UPDATE_AVAILABLE=1
-                    UPDATED_FILES="$UPDATED_FILES $file"
-                fi
-                rm -f "$REMOTE_FILE"
-            fi
-        fi
-    done
+    # Скачиваем удалённую версию
+    REMOTE_VERSION=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null | tr -d '\n\r ')
     
-    if [ "$UPDATE_AVAILABLE" -eq 1 ]; then
+    if [ -z "$REMOTE_VERSION" ]; then
+        return 1
+    fi
+    
+    # Сравниваем версии
+    if version_greater "$LOCAL_VERSION" "$REMOTE_VERSION"; then
         return 0
     fi
+    
     return 1
 }
 
 # Предложить обновление
 offer_update() {
+    LOCAL_VERSION=$(get_local_version)
+    REMOTE_VERSION=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null | tr -d '\n\r ')
+    
     printf "\n${YELLOW}╔════════════════════════════════════════════════════════════╗${RESET}\n"
     printf "${YELLOW}║${RESET}  ${BOLD}🔄 Доступно обновление!${RESET}                                   ${YELLOW}║${RESET}\n"
     printf "${YELLOW}╚════════════════════════════════════════════════════════════╝${RESET}\n"
+    printf "\n${GRAY}Текущая версия: ${LOCAL_VERSION}${RESET}\n"
+    printf "${GREEN}Новая версия:   ${REMOTE_VERSION}${RESET}\n"
     printf "\n${BLUE}Обновить систему сейчас? (y/n): ${RESET}"
     read -r answer
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
@@ -104,7 +129,7 @@ offer_update() {
 # Запустить обновление
 run_update() {
     printf "\n${GREEN}Запускаю обновление...${RESET}\n\n"
-    # Сбрасываем время проверки чтобы после обновления не проверять снова
+    # Сбрасываем время проверки
     rm -f "$UPDATE_CHECK_FILE"
     # Запускаем установщик
     curl -sSL "$GITHUB_RAW/install.sh" | sh
@@ -121,49 +146,35 @@ force_check_updates() {
         return 1
     fi
     
-    UPDATE_AVAILABLE=0
-    UPDATED_FILES=""
+    LOCAL_VERSION=$(get_local_version)
+    printf "Текущая версия: ${BLUE}${LOCAL_VERSION}${RESET}\n"
     
-    for file in $CHECK_FILES; do
-        LOCAL_FILE="$SCRIPT_DIR/$file"
-        printf "  Проверяю ${BLUE}$file${RESET}... "
-        if [ -f "$LOCAL_FILE" ]; then
-            LOCAL_HASH=$(get_file_hash "$LOCAL_FILE")
-            REMOTE_FILE="/tmp/prosto_check_$file"
-            if curl -sL --max-time 5 "$GITHUB_RAW/$file" -o "$REMOTE_FILE" 2>/dev/null; then
-                REMOTE_HASH=$(get_file_hash "$REMOTE_FILE")
-                if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ "$REMOTE_HASH" != "none" ]; then
-                    printf "${YELLOW}обновление доступно${RESET}\n"
-                    UPDATE_AVAILABLE=1
-                    UPDATED_FILES="$UPDATED_FILES $file"
-                else
-                    printf "${GREEN}актуален${RESET}\n"
-                fi
-                rm -f "$REMOTE_FILE"
-            else
-                printf "${RED}ошибка загрузки${RESET}\n"
-            fi
-        else
-            printf "${RED}не установлен${RESET}\n"
-        fi
-    done
+    printf "Проверяю удалённую версию... "
+    REMOTE_VERSION=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null | tr -d '\n\r ')
     
-    echo ""
-    if [ "$UPDATE_AVAILABLE" -eq 1 ]; then
-        printf "${YELLOW}Найдены обновления для:${RESET}$UPDATED_FILES\n\n"
+    if [ -z "$REMOTE_VERSION" ]; then
+        printf "${RED}ошибка загрузки${RESET}\n"
+        return 1
+    fi
+    
+    printf "${GREEN}${REMOTE_VERSION}${RESET}\n\n"
+    
+    if version_greater "$LOCAL_VERSION" "$REMOTE_VERSION"; then
+        printf "${YELLOW}Доступна новая версия: ${REMOTE_VERSION}${RESET}\n\n"
         printf "${BLUE}Обновить сейчас? (y/n): ${RESET}"
         read -r answer
         if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
             run_update
         fi
     else
-        printf "${GREEN}✓ Все файлы актуальны!${RESET}\n"
+        printf "${GREEN}✓ У вас установлена актуальная версия!${RESET}\n"
     fi
 }
 
 show_menu() {
     show_header
-    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET}\n\n"
+    LOCAL_VERSION=$(get_local_version)
+    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET} ${GRAY}v${LOCAL_VERSION}${RESET}\n\n"
     printf "${BLUE}1)${RESET} Показать статус серверов\n"
     printf "${BLUE}2)${RESET} Принудительная ротация\n"
     printf "${BLUE}3)${RESET} Тестовое уведомление\n"
@@ -211,6 +222,10 @@ elif [ "$1" = "update" ]; then
     show_header
     force_check_updates
     exit 0
+elif [ "$1" = "version" ]; then
+    LOCAL_VERSION=$(get_local_version)
+    echo "простовпн v${LOCAL_VERSION}"
+    exit 0
 elif [ -n "$1" ]; then
     echo "Неизвестная команда: $1"
     echo ""
@@ -223,6 +238,7 @@ elif [ -n "$1" ]; then
     echo "  prosto seturl <URL> - установить URL подписки"
     echo "  prosto cleanup      - очистка файлов"
     echo "  prosto update       - проверить обновления"
+    echo "  prosto version      - показать версию"
     exit 1
 fi
 
@@ -315,7 +331,9 @@ while true; do
             ;;
         8)
             show_header
-            printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n\n"
+            LOCAL_VERSION=$(get_local_version)
+            printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n"
+            printf "${GRAY}Версия: ${LOCAL_VERSION}${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
             printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
             printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"

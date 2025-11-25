@@ -327,6 +327,23 @@ health_tcp() {
     return $?
 }
 
+# Множественная проверка доступности (2 из 3 должны пройти)
+health_check_multi() {
+    HOSTPORT="$1"
+    SUCCESS_COUNT=0
+    
+    for check_num in 1 2 3; do
+        if health_tcp "$HOSTPORT"; then
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+        fi
+        # Ждём 2 секунды между проверками (кроме последней)
+        [ "$check_num" -lt 3 ] && sleep 2
+    done
+    
+    # Если 2+ из 3 успешны — сервер доступен
+    [ "$SUCCESS_COUNT" -ge 2 ]
+}
+
 restart_xkeen() {
     if [ "$DRY_RUN" -eq 1 ]; then
         printf "[TEST] Перезапуск xkeen пропущен (dry-run)\n"
@@ -503,7 +520,8 @@ CURRENT_CC=""
 if [ -f "$ACTIVE_TARGET" ]; then
     CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
     if [ -n "$CUR_TGT" ]; then
-        if health_tcp "$CUR_TGT"; then
+        # Используем множественную проверку (2 из 3 должны пройти)
+        if health_check_multi "$CUR_TGT"; then
             if [ "$FORCE_ROTATE" -eq 0 ] && [ -z "$TARGET_COUNTRY" ]; then
                 log "[$CURRENT_CC] Узел $CUR_TGT доступен — ничего не делаем."
                 exit 0
@@ -511,7 +529,7 @@ if [ -f "$ACTIVE_TARGET" ]; then
                 log "[$CURRENT_CC] Узел $CUR_TGT доступен, но запрошена принудительная ротация."
             fi
         else
-            log "[$CURRENT_CC] Узел $CUR_TGT недоступен — пробуем следующую страну."
+            log "[$CURRENT_CC] Узел $CUR_TGT недоступен (2+ из 3 проверок не прошли) — пробуем следующую страну."
             send_telegram "УЗЕЛ НЕДОСТУПЕН" "Текущий узел $CURRENT_CC ($CUR_TGT) не отвечает.
 Начинаю автоматический поиск альтернативного сервера."
         fi
@@ -521,6 +539,10 @@ if [ -f "$ACTIVE_TARGET" ]; then
 else
     log "ACTIVE_TARGET не найден — требуется переключение."
 fi
+
+# Удаляем флаг успеха перед началом ротации
+SUCCESS_FLAG="/tmp/xkeen_rotate_success"
+rm -f "$SUCCESS_FLAG"
 
 # Получаем кандидатов отсортированных по ping
 verbose_print "Измерение ping до всех серверов..."
@@ -570,8 +592,9 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
     verbose_print "Проверяем $CC (ping: ${PING_MS}ms)..."
     log "Проверяем $CC ($NEW_TGT)..."
     
-    if ! health_tcp "$NEW_TGT"; then
-        verbose_print "  ✗ $CC недоступен"
+    # Используем множественную проверку (2 из 3 должны пройти)
+    if ! health_check_multi "$NEW_TGT"; then
+        verbose_print "  ✗ $CC недоступен (2+ из 3 проверок не прошли)"
         log "[$CC] Узел $NEW_TGT недоступен — пропускаем."
         continue
     fi
@@ -605,7 +628,8 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
     log "Активируем $CC и перезапускаем xkeen..."
     restart_xkeen
 
-    if health_tcp "$NEW_TGT"; then
+    # Используем множественную проверку после перезапуска (2 из 3 должны пройти)
+    if health_check_multi "$NEW_TGT"; then
         echo "$CC" > "$STATE_FILE"
         log "Успешно активирована узел $NEW_TGT."
         echo "✓ Сервер $CC успешно активирован!"
@@ -613,12 +637,20 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
             send_telegram "СМЕНА СЕРВЕРА" "Выполнено переключение с $CURRENT_CC ($CUR_TGT) на $CC ($NEW_TGT).
 Новый сервер активирован и успешно прошёл проверку доступности."
         fi
+        # Создаём флаг успеха для выхода из основного скрипта
+        touch "$SUCCESS_FLAG"
         exit 0
     else
         log "[$CC] После рестарта страна $CC всё ещё недоступна — пробуем следующего кандидата."
         verbose_print "  ⚠ $CC не работает после перезапуска, пробуем следующий..."
     fi
 done
+
+# Проверяем флаг успеха - если он есть, сервер был успешно переключен в подоболочке
+if [ -f "$SUCCESS_FLAG" ]; then
+    rm -f "$SUCCESS_FLAG"
+    exit 0
+fi
 
 if [ -n "$TARGET_COUNTRY" ]; then
     log "Страна $TARGET_COUNTRY не найдена или недоступна."
@@ -627,4 +659,5 @@ else
     send_telegram "КРИТИЧНО - ВСЕ СЕРВЕРЫ НЕДОСТУПНЫ" "Не найдено ни одного работающего сервера из доступных вариантов!
 Текущая конфигурация $CURRENT_CC сохранена. Требуется срочная проверка серверов вручную."
 fi
+rm -f "$SUCCESS_FLAG"
 exit 1
