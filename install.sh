@@ -177,6 +177,9 @@ VERSION_FILE="$SCRIPT_DIR/.version"
 UPDATE_CHECK_FILE="/tmp/prosto_update_check"
 SUBSCRIPTION_FILE="$SCRIPT_DIR/.subscription_url"
 OPENED_PORTS_FILE="$SCRIPT_DIR/.opened_ports"
+FAVORITE_COUNTRY_FILE="$SCRIPT_DIR/.favorite_country"
+FORCED_COUNTRY_FILE="$SCRIPT_DIR/.forced_country"
+AVAILABLE_DIR="/opt/etc/xray/outbounds_available"
 
 GRAY="\033[90m"
 BLUE="\033[94m"
@@ -345,6 +348,174 @@ close_opened_ports() {
     fi
 }
 
+get_favorite_country() {
+    if [ -f "$FAVORITE_COUNTRY_FILE" ]; then
+        cat "$FAVORITE_COUNTRY_FILE" 2>/dev/null | tr -d '\n\r '
+    fi
+}
+
+get_forced_country() {
+    if [ -f "$FORCED_COUNTRY_FILE" ]; then
+        LINE=$(cat "$FORCED_COUNTRY_FILE" 2>/dev/null)
+        CC="${LINE%%:*}"
+        TIMESTAMP="${LINE##*:}"
+        if [ -n "$CC" ] && [ -n "$TIMESTAMP" ]; then
+            CURRENT_TIME=$(date +%s)
+            TIME_DIFF=$((CURRENT_TIME - TIMESTAMP))
+            if [ "$TIME_DIFF" -lt 300 ]; then
+                echo "$CC"
+            fi
+        fi
+    fi
+}
+
+is_technical_server() {
+    CC="$1"
+    TECHNICAL_NAMES="WIFI|WiFi|wifi|PROXY|proxy|TEST|test|LOCAL|local|VPN|vpn|SERVER|server|NODE|node|DIRECT|direct|BLOCK|block|REJECT|reject|AUTO|auto|BEST|best|FAST|fast|LOAD|load|BALANCE|balance"
+    echo "$CC" | grep -qiE "^($TECHNICAL_NAMES)$" && return 0
+    echo "$CC" | grep -q '%' && return 0
+    echo "$CC" | grep -qE '^[0-9_a-z]+$' && return 0
+    echo "$CC" | grep -q '\.' && return 0
+    echo "$CC" | grep -qE '[\[\]]' && return 0
+    CC_LEN=$(echo "$CC" | wc -c)
+    [ "$CC_LEN" -lt 3 ] || [ "$CC_LEN" -gt 15 ] && return 0
+    VALID_COUNTRIES="USA|US|GERMANY|DE|RUSSIA|RU|FRANCE|FR|NETHERLANDS|NL|UK|GB|JAPAN|JP|SINGAPORE|SG|CANADA|CA|AUSTRALIA|AU|BRAZIL|BR|INDIA|IN|CHINA|CN|KOREA|KR|ITALY|IT|SPAIN|ES|POLAND|PL|SWEDEN|SE|NORWAY|NO|FINLAND|FI|DENMARK|DK|AUSTRIA|AT|SWITZERLAND|CH|BELGIUM|BE|IRELAND|IE|PORTUGAL|PT|GREECE|GR|CZECH|CZ|ROMANIA|RO|HUNGARY|HU|BULGARIA|BG|UKRAINE|UA|TURKEY|TR|ISRAEL|IL|UAE|DUBAI|HONG|HK|TAIWAN|TW|THAILAND|TH|VIETNAM|VN|INDONESIA|ID|MALAYSIA|MY|PHILIPPINES|PH|MEXICO|MX|ARGENTINA|AR|CHILE|CL|COLOMBIA|CO|PERU|PE|SOUTH|AFRICA|ZA|EGYPT|EG|MOROCCO|MA|NIGERIA|NG|KENYA|KE|LITVA|LATVIA|LV|LITHUANIA|LT|ESTONIA|EE|KAZAHSTAN|KAZAKHSTAN|KZ|UZBEKISTAN|UZ|GEORGIA|ARMENIA|AM|AZERBAIJAN|AZ|BELARUS|BY|MOLDOVA|MD|SERBIA|RS|CROATIA|HR|SLOVENIA|SI|SLOVAKIA|SK|CYPRUS|CY|MALTA|MT|LUXEMBOURG|LU|ICELAND|MOSCOW|BERLIN|LONDON|PARIS|AMSTERDAM|TOKYO|SEOUL|BEIJING|SHANGHAI|MUMBAI|SYDNEY|TORONTO|VANCOUVER|MIAMI|DALLAS|CHICAGO|ATLANTA|SEATTLE|DENVER|PHOENIX|BOSTON|WASHINGTON|NEWYORK|LOSANGELES|SANFRANCISCO|FRANKFURT|MUNICH|VIENNA|ZURICH|GENEVA|BRUSSELS|DUBLIN|LISBON|MADRID|BARCELONA|ROME|MILAN|PRAGUE|WARSAW|BUDAPEST|BUCHAREST|SOFIA|HELSINKI|STOCKHOLM|OSLO|COPENHAGEN"
+    echo "$CC" | grep -qiE "^($VALID_COUNTRIES)" && return 1
+    return 0
+}
+
+get_available_countries() {
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        [ -z "$CC" ] && continue
+        is_technical_server "$CC" && continue
+        echo "$CC"
+    done
+}
+
+select_country() {
+    TITLE="$1"
+    printf "${BLUE}${BOLD}${TITLE}${RESET}\n\n"
+    FAVORITE=$(get_favorite_country)
+    FORCED=$(get_forced_country)
+    printf "${GRAY}Доступные страны:${RESET}\n\n"
+    i=1
+    COUNTRIES=""
+    for CC in $(get_available_countries | sort); do
+        MARKS=""
+        [ "$CC" = "$FAVORITE" ] && MARKS="${MARKS} ${YELLOW}★ избранная${RESET}"
+        [ "$CC" = "$FORCED" ] && MARKS="${MARKS} ${BLUE}⚡ принудительная${RESET}"
+        printf "  ${BLUE}%2d)${RESET} %s%s\n" "$i" "$CC" "$MARKS"
+        COUNTRIES="${COUNTRIES}${CC}\n"
+        i=$((i + 1))
+    done
+    echo ""
+    printf "${BLUE}Введите номер страны (0 для отмены): ${RESET}"
+    read -r choice
+    if [ "$choice" = "0" ] || [ -z "$choice" ]; then
+        return 1
+    fi
+    SELECTED=$(printf "$COUNTRIES" | sed -n "${choice}p")
+    if [ -n "$SELECTED" ]; then
+        echo "$SELECTED"
+        return 0
+    fi
+    return 1
+}
+
+set_favorite_interactive() {
+    SELECTED=$(select_country "Выбор избранной страны")
+    if [ $? -eq 0 ] && [ -n "$SELECTED" ]; then
+        echo "$SELECTED" > "$FAVORITE_COUNTRY_FILE"
+        printf "\n${GREEN}✓ Избранная страна установлена: $SELECTED${RESET}\n"
+        printf "${GRAY}Эта страна будет в приоритете при ротации, без ограничений по ping.${RESET}\n"
+    else
+        printf "\n${GRAY}Отменено.${RESET}\n"
+    fi
+}
+
+clear_favorite() {
+    if [ -f "$FAVORITE_COUNTRY_FILE" ]; then
+        rm -f "$FAVORITE_COUNTRY_FILE"
+        printf "${GREEN}✓ Избранная страна сброшена.${RESET}\n"
+    else
+        printf "${GRAY}Избранная страна не была установлена.${RESET}\n"
+    fi
+}
+
+set_forced_interactive() {
+    SELECTED=$(select_country "Выбрать страну принудительно")
+    if [ $? -eq 0 ] && [ -n "$SELECTED" ]; then
+        TIMESTAMP=$(date +%s)
+        echo "${SELECTED}:${TIMESTAMP}" > "$FORCED_COUNTRY_FILE"
+        printf "\n${GREEN}✓ Принудительно выбрана страна: $SELECTED${RESET}\n"
+        printf "${GRAY}Эта страна будет использоваться 5 минут или до недоступности.${RESET}\n"
+        echo ""
+        printf "${BLUE}Активировать сейчас? (y/n): ${RESET}"
+        read -r activate
+        if [ "$activate" = "y" ] || [ "$activate" = "Y" ]; then
+            $SCRIPT_DIR/xkeen_rotate.sh --country="$SELECTED" --force --verbose
+        fi
+    else
+        printf "\n${GRAY}Отменено.${RESET}\n"
+    fi
+}
+
+clear_forced() {
+    if [ -f "$FORCED_COUNTRY_FILE" ]; then
+        rm -f "$FORCED_COUNTRY_FILE"
+        printf "${GREEN}✓ Принудительный выбор сброшен.${RESET}\n"
+    else
+        printf "${GRAY}Принудительный выбор не был установлен.${RESET}\n"
+    fi
+}
+
+favorite_menu() {
+    show_header
+    printf "${BLUE}${BOLD}Избранная страна${RESET}\n\n"
+    FAVORITE=$(get_favorite_country)
+    if [ -n "$FAVORITE" ]; then
+        printf "Текущая избранная: ${YELLOW}★ $FAVORITE${RESET}\n\n"
+    else
+        printf "${GRAY}Избранная страна не установлена.${RESET}\n\n"
+    fi
+    printf "${BLUE}1)${RESET} Установить избранную страну\n"
+    printf "${BLUE}2)${RESET} Сбросить избранную страну\n"
+    printf "${BLUE}0)${RESET} Назад\n"
+    echo ""
+    printf "${BLUE}Выберите действие: ${RESET}"
+    read -r choice
+    case $choice in
+        1) show_header; set_favorite_interactive ;;
+        2) clear_favorite ;;
+        0|*) return ;;
+    esac
+}
+
+forced_menu() {
+    show_header
+    printf "${BLUE}${BOLD}Выбрать страну принудительно${RESET}\n\n"
+    FORCED=$(get_forced_country)
+    if [ -n "$FORCED" ]; then
+        printf "Текущий выбор: ${BLUE}⚡ $FORCED${RESET}\n"
+        printf "${GRAY}(сбросится через 5 минут или при недоступности)${RESET}\n\n"
+    else
+        printf "${GRAY}Принудительный выбор не установлен.${RESET}\n\n"
+    fi
+    printf "${BLUE}1)${RESET} Выбрать страну принудительно\n"
+    printf "${BLUE}2)${RESET} Сбросить принудительный выбор\n"
+    printf "${BLUE}0)${RESET} Назад\n"
+    echo ""
+    printf "${BLUE}Выберите действие: ${RESET}"
+    read -r choice
+    case $choice in
+        1) show_header; set_forced_interactive ;;
+        2) clear_forced ;;
+        0|*) return ;;
+    esac
+}
+
 force_check_updates() {
     printf "${BLUE}Проверка обновлений...${RESET}\n\n"
     rm -f "$UPDATE_CHECK_FILE"
@@ -376,17 +547,27 @@ force_check_updates() {
 show_menu() {
     show_header
     LOCAL_VERSION=$(get_local_version)
-    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET} ${GRAY}v${LOCAL_VERSION}${RESET}\n\n"
+    FAVORITE=$(get_favorite_country)
+    FORCED=$(get_forced_country)
+    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET} ${GRAY}v${LOCAL_VERSION}${RESET}\n"
+    if [ -n "$FAVORITE" ] || [ -n "$FORCED" ]; then
+        [ -n "$FAVORITE" ] && printf "${YELLOW}★ Избранная: $FAVORITE${RESET}  "
+        [ -n "$FORCED" ] && printf "${BLUE}⚡ Принудительная: $FORCED${RESET}"
+        echo ""
+    fi
+    echo ""
     printf "${BLUE}1)${RESET} Показать статус серверов\n"
-    printf "${BLUE}2)${RESET} Принудительная ротация\n"
-    printf "${BLUE}3)${RESET} Тестовое уведомление\n"
-    printf "${BLUE}4)${RESET} Синхронизация подписки\n"
-    printf "${BLUE}5)${RESET} Смена ссылки подписки\n"
-    printf "${BLUE}6)${RESET} Очистка файлов\n"
-    printf "${BLUE}7)${RESET} Проверить обновления\n"
-    printf "${BLUE}8)${RESET} Открыть порты\n"
-    printf "${BLUE}9)${RESET} Закрыть порты\n"
-    printf "${BLUE}10)${RESET} О системе\n"
+    printf "${BLUE}2)${RESET} Автоматическая ротация\n"
+    printf "${BLUE}3)${RESET} Выбрать страну принудительно\n"
+    printf "${BLUE}4)${RESET} Избранная страна\n"
+    printf "${BLUE}5)${RESET} Тестовое уведомление\n"
+    printf "${BLUE}6)${RESET} Синхронизация подписки\n"
+    printf "${BLUE}7)${RESET} Смена ссылки подписки\n"
+    printf "${BLUE}8)${RESET} Очистка файлов\n"
+    printf "${BLUE}9)${RESET} Проверить обновления\n"
+    printf "${BLUE}10)${RESET} Открыть порты\n"
+    printf "${BLUE}11)${RESET} Закрыть порты\n"
+    printf "${BLUE}12)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
@@ -421,6 +602,33 @@ elif [ "$1" = "seturl" ]; then
 elif [ "$1" = "cleanup" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --cleanup
     exit 0
+elif [ "$1" = "country" ]; then
+    if [ -n "$2" ]; then
+        $SCRIPT_DIR/xkeen_rotate.sh --set-forced="$2"
+        $SCRIPT_DIR/xkeen_rotate.sh --country="$2" --force --verbose
+    else
+        $SCRIPT_DIR/xkeen_rotate.sh --list-countries
+    fi
+    exit 0
+elif [ "$1" = "favorite" ]; then
+    if [ -n "$2" ]; then
+        $SCRIPT_DIR/xkeen_rotate.sh --set-favorite="$2"
+    else
+        FAVORITE=$(get_favorite_country)
+        if [ -n "$FAVORITE" ]; then
+            printf "Избранная страна: ${YELLOW}★ $FAVORITE${RESET}\n"
+        else
+            echo "Избранная страна не установлена."
+            echo "Используйте: prosto favorite <СТРАНА>"
+        fi
+    fi
+    exit 0
+elif [ "$1" = "clearfavorite" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --clear-favorite
+    exit 0
+elif [ "$1" = "clearforced" ]; then
+    $SCRIPT_DIR/xkeen_rotate.sh --clear-forced
+    exit 0
 elif [ "$1" = "openports" ]; then
     show_header
     printf "${BLUE}${BOLD}Открытие портов${RESET}\n\n"
@@ -443,17 +651,21 @@ elif [ -n "$1" ]; then
     echo "Неизвестная команда: $1"
     echo ""
     echo "Доступные команды:"
-    echo "  prosto              - интерактивное меню"
-    echo "  prosto status       - показать статус"
-    echo "  prosto force        - принудительная ротация"
-    echo "  prosto test         - тестовое уведомление"
-    echo "  prosto sync         - синхронизация (использует сохранённый URL)"
-    echo "  prosto seturl <URL> - установить URL подписки"
-    echo "  prosto cleanup      - очистка файлов"
-    echo "  prosto openports    - открыть порты"
-    echo "  prosto closeports   - закрыть порты"
-    echo "  prosto update       - проверить обновления"
-    echo "  prosto version      - показать версию"
+    echo "  prosto                 - интерактивное меню"
+    echo "  prosto status          - показать статус"
+    echo "  prosto force           - автоматическая ротация"
+    echo "  prosto country <XX>    - выбрать страну принудительно"
+    echo "  prosto favorite <XX>   - установить избранную страну"
+    echo "  prosto clearfavorite   - сбросить избранную страну"
+    echo "  prosto clearforced     - сбросить принудительный выбор"
+    echo "  prosto test            - тестовое уведомление"
+    echo "  prosto sync            - синхронизация (использует сохранённый URL)"
+    echo "  prosto seturl <URL>    - установить URL подписки"
+    echo "  prosto cleanup         - очистка файлов"
+    echo "  prosto openports       - открыть порты"
+    echo "  prosto closeports      - закрыть порты"
+    echo "  prosto update          - проверить обновления"
+    echo "  prosto version         - показать версию"
     exit 1
 fi
 
@@ -476,20 +688,32 @@ while true; do
             ;;
         2)
             show_header
-            printf "${BLUE}Принудительная ротация серверов...${RESET}\n\n"
+            printf "${BLUE}Автоматическая ротация серверов...${RESET}\n\n"
             $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         3)
+            forced_menu
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        4)
+            favorite_menu
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        5)
             show_header
             $SCRIPT_DIR/xkeen_rotate.sh --test-notify
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        4)
+        6)
             show_header
             SAVED_URL=$(get_subscription_url)
             if [ -n "$SAVED_URL" ]; then
@@ -497,13 +721,13 @@ while true; do
                 $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
             else
                 printf "${RED}URL подписки не настроен!${RESET}\n"
-                printf "Используйте пункт 5 для настройки ссылки подписки.\n"
+                printf "Используйте пункт 7 для настройки ссылки подписки.\n"
             fi
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        5)
+        7)
             show_header
             CURRENT_URL=$(get_subscription_url)
             if [ -n "$CURRENT_URL" ]; then
@@ -527,7 +751,7 @@ while true; do
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        6)
+        8)
             show_header
             printf "${BLUE}Очистка лишних файлов...${RESET}\n\n"
             $SCRIPT_DIR/xkeen_rotate.sh --cleanup
@@ -535,14 +759,14 @@ while true; do
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        7)
+        9)
             show_header
             force_check_updates
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        8)
+        10)
             show_header
             printf "${BLUE}${BOLD}Открытие портов${RESET}\n\n"
             open_ports
@@ -550,7 +774,7 @@ while true; do
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        9)
+        11)
             show_header
             printf "${BLUE}${BOLD}Закрытие портов${RESET}\n\n"
             close_opened_ports
@@ -558,7 +782,7 @@ while true; do
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
-        10)
+        12)
             show_header
             LOCAL_VERSION=$(get_local_version)
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n"

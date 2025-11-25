@@ -477,8 +477,8 @@ show_menu() {
     fi
     echo ""
     printf "${BLUE}1)${RESET} Показать статус серверов\n"
-    printf "${BLUE}2)${RESET} Принудительная ротация\n"
-    printf "${BLUE}3)${RESET} Выбрать страну\n"
+    printf "${BLUE}2)${RESET} Автоматическая ротация\n"
+    printf "${BLUE}3)${RESET} Выбрать страну принудительно\n"
     printf "${BLUE}4)${RESET} Избранная страна\n"
     printf "${BLUE}5)${RESET} Тестовое уведомление\n"
     printf "${BLUE}6)${RESET} Синхронизация подписки\n"
@@ -574,7 +574,7 @@ elif [ -n "$1" ]; then
     echo "Доступные команды:"
     echo "  prosto                 - интерактивное меню"
     echo "  prosto status          - показать статус"
-    echo "  prosto force           - принудительная ротация"
+    echo "  prosto force           - автоматическая ротация"
     echo "  prosto country <XX>    - выбрать страну принудительно"
     echo "  prosto favorite <XX>   - установить избранную страну"
     echo "  prosto clearfavorite   - сбросить избранную страну"
@@ -611,7 +611,7 @@ while true; do
             ;;
         2)
             show_header
-            printf "${BLUE}Принудительная ротация серверов...${RESET}\n\n"
+            printf "${BLUE}Автоматическая ротация серверов...${RESET}\n\n"
             $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
             echo ""
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
