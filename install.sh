@@ -430,9 +430,9 @@ select_country_menu() {
     : > "$COUNTRIES_FILE"
     for CC in $COUNTRY_LIST; do
         MARKS=""
-        [ "$CC" = "$FAVORITE" ] && MARKS="${MARKS} ${YELLOW}★ избранная${RESET}"
-        [ "$CC" = "$FORCED" ] && MARKS="${MARKS} ${BLUE}⚡ принудительная${RESET}"
-        printf "  ${BLUE}%2d)${RESET} %s%s\n" "$i" "$CC" "$MARKS"
+        [ "$CC" = "$FAVORITE" ] && MARKS=" [★ избранная]"
+        [ "$CC" = "$FORCED" ] && MARKS=" [⚡ принудительная]"
+        printf "  ${BLUE}%2d)${RESET} %s${YELLOW}%s${RESET}\n" "$i" "$CC" "$MARKS"
         echo "$CC" >> "$COUNTRIES_FILE"
         i=$((i + 1))
     done
