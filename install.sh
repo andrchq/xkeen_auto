@@ -277,7 +277,7 @@ run_update() {
 }
 
 open_ports() {
-    PORTS_TO_OPEN="80,443,3478,46420,596:599,1400,5222,10000,11005,9339,9443,2233,543,25565,50000:50030"
+    PORTS_TO_OPEN="80,443,50000:50030"
     printf "${BLUE}Порты для открытия: ${PORTS_TO_OPEN}${RESET}\n\n"
     printf "${YELLOW}Открыть эти порты? (y/n): ${RESET}"
     read -r answer
@@ -1050,7 +1050,7 @@ fi
 show_header
 show_section "Настройка портов прокси"
 
-PORTS_TO_OPEN="80,443,3478,46420,596:599,1400,5222,10000,11005,9339,9443,2233,543,25565,50000:50030"
+PORTS_TO_OPEN="80,443,50000:50030"
 OPENED_PORTS_FILE="$INSTALL_DIR/.opened_ports"
 
 if command -v xkeen >/dev/null 2>&1; then
