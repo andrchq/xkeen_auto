@@ -21,6 +21,11 @@ TG_ENABLED=1                                        # 1=включено, 0=вы
 TEST_NOTIFY_ENABLED=0                               # 1=автотест каждые N минут, 0=выключено
 TEST_NOTIFY_FILE="/tmp/xkeen_last_test_notify"      # файл с временем последнего теста
 TEST_NOTIFY_INTERVAL=300                            # интервал в секундах
+FAIL_COUNTERS_FILE="/opt/root/scripts/.fail_counters"  # счётчики падений серверов
+FAVORITE_COUNTRY_FILE="/opt/root/scripts/.favorite_country"  # избранная страна
+FORCED_COUNTRY_FILE="/opt/root/scripts/.forced_country"  # принудительно выбранная страна
+FORCED_COUNTRY_TIMEOUT=300                          # таймаут принудительного выбора (5 минут)
+MAX_PING_MS=100                                     # макс. ping для обычных серверов
 # ---------- Конец настроек ----------
 
 FORCE_ROTATE=0
@@ -31,6 +36,11 @@ VERBOSE=0
 TARGET_COUNTRY=""
 SYNC_URL=""
 DO_CLEANUP=0
+SET_FAVORITE=""
+SET_FORCED=""
+CLEAR_FAVORITE=0
+CLEAR_FORCED=0
+LIST_COUNTRIES=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -58,23 +68,43 @@ while [ $# -gt 0 ]; do
         --cleanup)
             DO_CLEANUP=1
             ;;
+        --set-favorite=*)
+            SET_FAVORITE="${1#--set-favorite=}"
+            ;;
+        --set-forced=*)
+            SET_FORCED="${1#--set-forced=}"
+            ;;
+        --clear-favorite)
+            CLEAR_FAVORITE=1
+            ;;
+        --clear-forced)
+            CLEAR_FORCED=1
+            ;;
+        --list-countries)
+            LIST_COUNTRIES=1
+            ;;
         *)
             echo "Использование: $0 [опции]"
             echo ""
             echo "Опции:"
-            echo "  --force           Принудительная ротация даже если текущая страна работает"
-            echo "  --verbose         Подробный вывод (показывает переходы)"
-            printf "  --test            Dry-run режим (без реального переключения)\n"
-            echo "  --status          Показать состояние всех нод"
-            echo "  --test-notify     Отправить тестовое уведомление в Telegram"
-            echo "  --country=XX      Переключиться на конкретную страну"
-            echo "  --sync-url=URL    Синхронизировать подписку перед ротацией"
-            echo "  --cleanup         Очистка файлов (технические серверы, дубликаты, бэкапы)"
+            echo "  --force             Принудительная ротация даже если текущая страна работает"
+            echo "  --verbose           Подробный вывод (показывает переходы)"
+            printf "  --test              Dry-run режим (без реального переключения)\n"
+            echo "  --status            Показать состояние всех нод"
+            echo "  --test-notify       Отправить тестовое уведомление в Telegram"
+            echo "  --country=XX        Переключиться на конкретную страну"
+            echo "  --sync-url=URL      Синхронизировать подписку перед ротацией"
+            echo "  --cleanup           Очистка файлов (технические серверы, дубликаты, бэкапы)"
+            echo "  --set-favorite=XX   Установить избранную страну"
+            echo "  --clear-favorite    Сбросить избранную страну"
+            echo "  --set-forced=XX     Принудительно выбрать страну (5 мин таймаут)"
+            echo "  --clear-forced      Сбросить принудительный выбор"
+            echo "  --list-countries    Показать список доступных стран"
             echo ""
             echo "Примеры:"
             echo "  $0 --status"
-            echo "  $0 --sync-url=https://example.com/subscription"
-            echo "  $0 --country=US --force"
+            echo "  $0 --set-favorite=GERMANY"
+            echo "  $0 --set-forced=USA --force"
             echo "  $0 --cleanup"
             exit 2
             ;;
@@ -102,10 +132,112 @@ measure_ping() {
     fi
 }
 
-# Получить список серверов отсортированных по ping
+# ============ Счётчик падений серверов ============
+
+# Получить счётчик падений для страны
+get_fail_count() {
+    CC="$1"
+    [ ! -f "$FAIL_COUNTERS_FILE" ] && echo "0" && return
+    COUNT=$(grep "^${CC}:" "$FAIL_COUNTERS_FILE" 2>/dev/null | cut -d: -f2)
+    [ -z "$COUNT" ] && echo "0" || echo "$COUNT"
+}
+
+# Увеличить счётчик падений
+increment_fail_count() {
+    CC="$1"
+    [ -z "$CC" ] && return
+    CURRENT=$(get_fail_count "$CC")
+    NEW_COUNT=$((CURRENT + 1))
+    # Обновляем файл
+    if [ -f "$FAIL_COUNTERS_FILE" ]; then
+        grep -v "^${CC}:" "$FAIL_COUNTERS_FILE" > "${FAIL_COUNTERS_FILE}.tmp" 2>/dev/null || true
+        mv "${FAIL_COUNTERS_FILE}.tmp" "$FAIL_COUNTERS_FILE"
+    fi
+    echo "${CC}:${NEW_COUNT}" >> "$FAIL_COUNTERS_FILE"
+    log "Счётчик падений $CC: $NEW_COUNT"
+}
+
+# Сбросить счётчик падений (при успешной работе)
+reset_fail_count() {
+    CC="$1"
+    [ -z "$CC" ] && return
+    [ ! -f "$FAIL_COUNTERS_FILE" ] && return
+    grep -v "^${CC}:" "$FAIL_COUNTERS_FILE" > "${FAIL_COUNTERS_FILE}.tmp" 2>/dev/null || true
+    mv "${FAIL_COUNTERS_FILE}.tmp" "$FAIL_COUNTERS_FILE"
+}
+
+# ============ Избранная страна ============
+
+# Получить избранную страну
+get_favorite_country() {
+    [ -f "$FAVORITE_COUNTRY_FILE" ] && cat "$FAVORITE_COUNTRY_FILE" 2>/dev/null | tr -d '\n\r '
+}
+
+# Установить избранную страну
+set_favorite_country() {
+    CC="$1"
+    if [ -z "$CC" ]; then
+        rm -f "$FAVORITE_COUNTRY_FILE"
+        log "Избранная страна сброшена"
+    else
+        echo "$CC" > "$FAVORITE_COUNTRY_FILE"
+        log "Избранная страна установлена: $CC"
+    fi
+}
+
+# ============ Принудительный выбор страны ============
+
+# Получить принудительно выбранную страну (если не просрочена)
+get_forced_country() {
+    [ ! -f "$FORCED_COUNTRY_FILE" ] && return
+    # Формат файла: СТРАНА:TIMESTAMP
+    LINE=$(cat "$FORCED_COUNTRY_FILE" 2>/dev/null)
+    CC="${LINE%%:*}"
+    TIMESTAMP="${LINE##*:}"
+    [ -z "$CC" ] || [ -z "$TIMESTAMP" ] && return
+    # Проверяем таймаут
+    CURRENT_TIME=$(date +%s)
+    TIME_DIFF=$((CURRENT_TIME - TIMESTAMP))
+    if [ "$TIME_DIFF" -lt "$FORCED_COUNTRY_TIMEOUT" ]; then
+        echo "$CC"
+    fi
+}
+
+# Установить принудительную страну
+set_forced_country() {
+    CC="$1"
+    if [ -z "$CC" ]; then
+        rm -f "$FORCED_COUNTRY_FILE"
+        log "Принудительный выбор страны сброшен"
+    else
+        TIMESTAMP=$(date +%s)
+        echo "${CC}:${TIMESTAMP}" > "$FORCED_COUNTRY_FILE"
+        log "Принудительно выбрана страна: $CC"
+    fi
+}
+
+# Сбросить принудительный выбор
+clear_forced_country() {
+    rm -f "$FORCED_COUNTRY_FILE"
+    log "Принудительный выбор сброшен"
+}
+
+# Обновить время принудительного выбора (при успешной работе)
+refresh_forced_country() {
+    [ ! -f "$FORCED_COUNTRY_FILE" ] && return
+    CC=$(get_forced_country)
+    [ -n "$CC" ] && set_forced_country "$CC"
+}
+
+# ============ Получение кандидатов ============
+
+# Получить список серверов отсортированных по (ping + fail_count*10)
+# Серверы с ping > MAX_PING_MS исключаются (кроме избранной)
 get_sorted_candidates() {
     TEMP_PING_FILE="/tmp/xkeen_ping_$$"
     : > "$TEMP_PING_FILE"
+    
+    FAVORITE=$(get_favorite_country)
     
     for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
         [ -f "$f" ] || continue
@@ -123,10 +255,29 @@ get_sorted_candidates() {
         [ -z "$TGT" ] && continue
         
         PING_MS=$(measure_ping "$TGT")
-        echo "$PING_MS $CC $TGT $f" >> "$TEMP_PING_FILE"
+        
+        # Для избранной страны - нет ограничений
+        if [ "$CC" = "$FAVORITE" ]; then
+            # Избранная всегда в начале (сортировочный ключ 0)
+            echo "0 $CC $TGT $f $PING_MS" >> "$TEMP_PING_FILE"
+            continue
+        fi
+        
+        # Пропускаем серверы с ping > MAX_PING_MS
+        if [ "$PING_MS" -gt "$MAX_PING_MS" ]; then
+            continue
+        fi
+        
+        # Получаем счётчик падений
+        FAIL_COUNT=$(get_fail_count "$CC")
+        
+        # Вычисляем сортировочный ключ: ping + fail_count * 10
+        SORT_KEY=$((PING_MS + FAIL_COUNT * 10))
+        
+        echo "$SORT_KEY $CC $TGT $f $PING_MS" >> "$TEMP_PING_FILE"
     done
     
-    # Сортируем по ping (первый столбец)
+    # Сортируем по сортировочному ключу (первый столбец)
     sort -n "$TEMP_PING_FILE"
     rm -f "$TEMP_PING_FILE"
 }
@@ -366,6 +517,14 @@ cleanup_backups() {
 show_status() {
     echo "=== Статус нод xkeen ==="
     echo ""
+    
+    # Показываем избранную и принудительную страну
+    FAVORITE=$(get_favorite_country)
+    FORCED=$(get_forced_country)
+    [ -n "$FAVORITE" ] && echo "★ Избранная страна: $FAVORITE"
+    [ -n "$FORCED" ] && echo "⚡ Принудительно выбрана: $FORCED"
+    [ -n "$FAVORITE" ] || [ -n "$FORCED" ] && echo ""
+    
     CURRENT_CC=""
     [ -f "$STATE_FILE" ] && CURRENT_CC="$(cat "$STATE_FILE" 2>/dev/null)"
     if [ -f "$ACTIVE_TARGET" ]; then
@@ -385,7 +544,7 @@ show_status() {
         echo "Активная: не настроена"
     fi
     echo ""
-    echo "Доступные ноды (отсортированы по ping):"
+    echo "Доступные ноды (ping ≤${MAX_PING_MS}ms, сортировка по надёжности):"
     
     # Собираем данные с ping и сортируем
     TEMP_STATUS="/tmp/xkeen_status_$$"
@@ -414,23 +573,34 @@ show_status() {
             continue
         fi
         PING_MS=$(measure_ping "$TGT")
+        FAIL_COUNT=$(get_fail_count "$CC")
         if health_tcp "$TGT"; then
-            echo "$PING_MS $CC available" >> "$TEMP_STATUS"
+            echo "$PING_MS $CC available $FAIL_COUNT" >> "$TEMP_STATUS"
         else
-            echo "9999 $CC unavailable" >> "$TEMP_STATUS"
+            echo "9999 $CC unavailable $FAIL_COUNT" >> "$TEMP_STATUS"
         fi
     done
     
     # Выводим отсортированный список (без IP/доменов)
-    sort -n "$TEMP_STATUS" | while read -r ping cc status; do
+    sort -n "$TEMP_STATUS" | while read -r ping cc status fail_count; do
+        MARKS=""
+        [ "$cc" = "$FAVORITE" ] && MARKS="${MARKS}★"
+        [ "$cc" = "$FORCED" ] && MARKS="${MARKS}⚡"
+        [ -n "$MARKS" ] && MARKS=" ${MARKS}"
+        
+        FAIL_INFO=""
+        [ "$fail_count" -gt 0 ] && FAIL_INFO=" [падений: $fail_count]"
+        
         if [ "$status" = "available" ]; then
             if [ "$ping" = "9999" ]; then
-                echo "  $cc - ✓ доступна"
+                echo "  $cc${MARKS} - ✓ доступна${FAIL_INFO}"
+            elif [ "$ping" -gt "$MAX_PING_MS" ] && [ "$cc" != "$FAVORITE" ]; then
+                echo "  $cc${MARKS} - ✓ доступна [${ping}ms] (исключена, ping>${MAX_PING_MS})${FAIL_INFO}"
             else
-                echo "  $cc - ✓ доступна [${ping}ms]"
+                echo "  $cc${MARKS} - ✓ доступна [${ping}ms]${FAIL_INFO}"
             fi
         else
-            echo "  $cc - ✗ недоступна"
+            echo "  $cc${MARKS} - ✗ недоступна${FAIL_INFO}"
         fi
     done
     
@@ -502,6 +672,47 @@ fi
 
 [ "$SHOW_STATUS" -eq 1 ] && show_status
 
+# Обработка списка стран
+if [ "$LIST_COUNTRIES" -eq 1 ]; then
+    echo "=== Доступные страны ==="
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        [ -z "$CC" ] && continue
+        is_technical_server "$CC" && continue
+        echo "  $CC"
+    done
+    exit 0
+fi
+
+# Обработка установки избранной страны
+if [ -n "$SET_FAVORITE" ]; then
+    set_favorite_country "$SET_FAVORITE"
+    echo "✓ Избранная страна установлена: $SET_FAVORITE"
+    exit 0
+fi
+
+if [ "$CLEAR_FAVORITE" -eq 1 ]; then
+    set_favorite_country ""
+    echo "✓ Избранная страна сброшена"
+    exit 0
+fi
+
+# Обработка принудительного выбора
+if [ -n "$SET_FORCED" ]; then
+    set_forced_country "$SET_FORCED"
+    echo "✓ Принудительно выбрана страна: $SET_FORCED (таймаут: 5 мин)"
+    # Также переключаемся на эту страну
+    TARGET_COUNTRY="$SET_FORCED"
+    FORCE_ROTATE=1
+fi
+
+if [ "$CLEAR_FORCED" -eq 1 ]; then
+    clear_forced_country
+    echo "✓ Принудительный выбор сброшен"
+    exit 0
+fi
+
 # Обработка очистки
 if [ "$DO_CLEANUP" -eq 1 ]; then
     do_full_cleanup
@@ -517,11 +728,20 @@ acquire_lock
 CURRENT_CC=""
 [ -f "$STATE_FILE" ] && CURRENT_CC="$(cat "$STATE_FILE" 2>/dev/null)"
 
+# Проверяем избранную и принудительную страну
+FAVORITE=$(get_favorite_country)
+FORCED=$(get_forced_country)
+
 if [ -f "$ACTIVE_TARGET" ]; then
     CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
     if [ -n "$CUR_TGT" ]; then
         # Используем множественную проверку (2 из 3 должны пройти)
         if health_check_multi "$CUR_TGT"; then
+            # Сервер работает — сбрасываем счётчик падений
+            reset_fail_count "$CURRENT_CC"
+            # Обновляем время принудительного выбора
+            [ -n "$FORCED" ] && [ "$CURRENT_CC" = "$FORCED" ] && refresh_forced_country
+            
             if [ "$FORCE_ROTATE" -eq 0 ] && [ -z "$TARGET_COUNTRY" ]; then
                 log "[$CURRENT_CC] Узел $CUR_TGT доступен — ничего не делаем."
                 exit 0
@@ -529,6 +749,16 @@ if [ -f "$ACTIVE_TARGET" ]; then
                 log "[$CURRENT_CC] Узел $CUR_TGT доступен, но запрошена принудительная ротация."
             fi
         else
+            # Увеличиваем счётчик падений
+            increment_fail_count "$CURRENT_CC"
+            
+            # Если это принудительно выбранная страна и она недоступна — сбрасываем
+            if [ -n "$FORCED" ] && [ "$CURRENT_CC" = "$FORCED" ]; then
+                log "Принудительно выбранная страна $FORCED недоступна — сбрасываем выбор"
+                clear_forced_country
+                FORCED=""
+            fi
+            
             log "[$CURRENT_CC] Узел $CUR_TGT недоступен (2+ из 3 проверок не прошли) — пробуем следующую страну."
             send_telegram "УЗЕЛ НЕДОСТУПЕН" "Текущий узел $CURRENT_CC ($CUR_TGT) не отвечает.
 Начинаю автоматический поиск альтернативного сервера."
@@ -556,12 +786,13 @@ fi
 
 if [ "$VERBOSE" -eq 1 ]; then
     echo ""
-    echo "Серверы отсортированы по ping:"
-    echo "$SORTED_CANDIDATES" | while read -r ping cc tgt file; do
-        if [ "$ping" = "9999" ]; then
-            echo "  $cc - недоступен"
+    echo "Серверы отсортированы по надёжности (ping + падения*10):"
+    echo "$SORTED_CANDIDATES" | while read -r sort_key cc tgt file real_ping; do
+        FAIL_COUNT=$(get_fail_count "$cc")
+        if [ "$real_ping" = "9999" ] || [ -z "$real_ping" ]; then
+            echo "  $cc - недоступен [падений: $FAIL_COUNT]"
         else
-            echo "  $cc - ${ping}ms"
+            echo "  $cc - ${real_ping}ms [падений: $FAIL_COUNT]"
         fi
     done
     echo ""
@@ -575,8 +806,8 @@ else
     cleanup_backups
 fi
 
-# Проходим по отсортированным кандидатам
-echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
+# Проходим по отсортированным кандидатам (формат: SORT_KEY CC TGT FILE REAL_PING)
+echo "$SORTED_CANDIDATES" | while read -r SORT_KEY CC NEW_TGT cand REAL_PING; do
     [ -z "$CC" ] && continue
 
     if [ -n "$TARGET_COUNTRY" ]; then
@@ -588,12 +819,17 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
     fi
 
     CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+    
+    # Используем реальный ping для отображения
+    PING_MS="${REAL_PING:-$SORT_KEY}"
 
     verbose_print "Проверяем $CC (ping: ${PING_MS}ms)..."
     log "Проверяем $CC ($NEW_TGT)..."
     
     # Используем множественную проверку (2 из 3 должны пройти)
     if ! health_check_multi "$NEW_TGT"; then
+        # Увеличиваем счётчик падений для этого кандидата
+        increment_fail_count "$CC"
         verbose_print "  ✗ $CC недоступен (2+ из 3 проверок не прошли)"
         log "[$CC] Узел $NEW_TGT недоступен — пропускаем."
         continue
@@ -631,6 +867,8 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
     # Используем множественную проверку после перезапуска (2 из 3 должны пройти)
     if health_check_multi "$NEW_TGT"; then
         echo "$CC" > "$STATE_FILE"
+        # Сбрасываем счётчик падений при успешной активации
+        reset_fail_count "$CC"
         log "Успешно активирована узел $NEW_TGT."
         echo "✓ Сервер $CC успешно активирован!"
         if [ -n "$CURRENT_CC" ] && [ "$CURRENT_CC" != "$CC" ]; then
@@ -641,6 +879,8 @@ echo "$SORTED_CANDIDATES" | while read -r PING_MS CC NEW_TGT cand; do
         touch "$SUCCESS_FLAG"
         exit 0
     else
+        # Увеличиваем счётчик падений при неудаче после перезапуска
+        increment_fail_count "$CC"
         log "[$CC] После рестарта страна $CC всё ещё недоступна — пробуем следующего кандидата."
         verbose_print "  ⚠ $CC не работает после перезапуска, пробуем следующий..."
     fi
