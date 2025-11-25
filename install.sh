@@ -394,41 +394,70 @@ get_available_countries() {
     done
 }
 
-select_country() {
+select_country_menu() {
     TITLE="$1"
     printf "${BLUE}${BOLD}${TITLE}${RESET}\n\n"
     FAVORITE=$(get_favorite_country)
     FORCED=$(get_forced_country)
+    
+    # Проверяем наличие стран
+    COUNTRY_LIST=$(get_available_countries | sort)
+    if [ -z "$COUNTRY_LIST" ]; then
+        printf "${YELLOW}Список стран пуст!${RESET}\n\n"
+        printf "${GRAY}Страны не найдены в папке конфигураций.${RESET}\n"
+        SAVED_URL=$(get_subscription_url)
+        if [ -n "$SAVED_URL" ]; then
+            printf "${BLUE}Выполнить синхронизацию подписки? (y/n): ${RESET}"
+            read -r dosync
+            if [ "$dosync" = "y" ] || [ "$dosync" = "Y" ]; then
+                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
+                # Повторно получаем список после синхронизации
+                COUNTRY_LIST=$(get_available_countries | sort)
+            fi
+        else
+            printf "${RED}URL подписки не настроен!${RESET}\n"
+            printf "Используйте пункт 7 меню для настройки ссылки подписки.\n"
+        fi
+        if [ -z "$COUNTRY_LIST" ]; then
+            SELECTED_COUNTRY=""
+            return 1
+        fi
+    fi
+    
     printf "${GRAY}Доступные страны:${RESET}\n\n"
     i=1
-    COUNTRIES=""
-    for CC in $(get_available_countries | sort); do
+    COUNTRIES_FILE="/tmp/prosto_countries_$$"
+    : > "$COUNTRIES_FILE"
+    for CC in $COUNTRY_LIST; do
         MARKS=""
         [ "$CC" = "$FAVORITE" ] && MARKS="${MARKS} ${YELLOW}★ избранная${RESET}"
         [ "$CC" = "$FORCED" ] && MARKS="${MARKS} ${BLUE}⚡ принудительная${RESET}"
         printf "  ${BLUE}%2d)${RESET} %s%s\n" "$i" "$CC" "$MARKS"
-        COUNTRIES="${COUNTRIES}${CC}\n"
+        echo "$CC" >> "$COUNTRIES_FILE"
         i=$((i + 1))
     done
     echo ""
     printf "${BLUE}Введите номер страны (0 для отмены): ${RESET}"
     read -r choice
     if [ "$choice" = "0" ] || [ -z "$choice" ]; then
+        rm -f "$COUNTRIES_FILE"
+        SELECTED_COUNTRY=""
         return 1
     fi
-    SELECTED=$(printf "$COUNTRIES" | sed -n "${choice}p")
-    if [ -n "$SELECTED" ]; then
-        echo "$SELECTED"
+    SELECTED_COUNTRY=$(sed -n "${choice}p" "$COUNTRIES_FILE")
+    rm -f "$COUNTRIES_FILE"
+    if [ -n "$SELECTED_COUNTRY" ]; then
         return 0
     fi
+    SELECTED_COUNTRY=""
     return 1
 }
 
 set_favorite_interactive() {
-    SELECTED=$(select_country "Выбор избранной страны")
-    if [ $? -eq 0 ] && [ -n "$SELECTED" ]; then
-        echo "$SELECTED" > "$FAVORITE_COUNTRY_FILE"
-        printf "\n${GREEN}✓ Избранная страна установлена: $SELECTED${RESET}\n"
+    select_country_menu "Выбор избранной страны"
+    if [ $? -eq 0 ] && [ -n "$SELECTED_COUNTRY" ]; then
+        echo "$SELECTED_COUNTRY" > "$FAVORITE_COUNTRY_FILE"
+        printf "\n${GREEN}✓ Избранная страна установлена: $SELECTED_COUNTRY${RESET}\n"
         printf "${GRAY}Эта страна будет в приоритете при ротации, без ограничений по ping.${RESET}\n"
     else
         printf "\n${GRAY}Отменено.${RESET}\n"
@@ -445,17 +474,17 @@ clear_favorite() {
 }
 
 set_forced_interactive() {
-    SELECTED=$(select_country "Выбрать страну принудительно")
-    if [ $? -eq 0 ] && [ -n "$SELECTED" ]; then
+    select_country_menu "Выбрать страну принудительно"
+    if [ $? -eq 0 ] && [ -n "$SELECTED_COUNTRY" ]; then
         TIMESTAMP=$(date +%s)
-        echo "${SELECTED}:${TIMESTAMP}" > "$FORCED_COUNTRY_FILE"
-        printf "\n${GREEN}✓ Принудительно выбрана страна: $SELECTED${RESET}\n"
+        echo "${SELECTED_COUNTRY}:${TIMESTAMP}" > "$FORCED_COUNTRY_FILE"
+        printf "\n${GREEN}✓ Принудительно выбрана страна: $SELECTED_COUNTRY${RESET}\n"
         printf "${GRAY}Эта страна будет использоваться 5 минут или до недоступности.${RESET}\n"
         echo ""
         printf "${BLUE}Активировать сейчас? (y/n): ${RESET}"
         read -r activate
         if [ "$activate" = "y" ] || [ "$activate" = "Y" ]; then
-            $SCRIPT_DIR/xkeen_rotate.sh --country="$SELECTED" --force --verbose
+            $SCRIPT_DIR/xkeen_rotate.sh --country="$SELECTED_COUNTRY" --force --verbose
         fi
     else
         printf "\n${GRAY}Отменено.${RESET}\n"
