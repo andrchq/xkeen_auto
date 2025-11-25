@@ -5,6 +5,7 @@ GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
 VERSION_FILE="$SCRIPT_DIR/.version"
 UPDATE_CHECK_FILE="/tmp/prosto_update_check"
 SUBSCRIPTION_FILE="$SCRIPT_DIR/.subscription_url"
+OPENED_PORTS_FILE="$SCRIPT_DIR/.opened_ports"
 
 GRAY="\033[90m"
 BLUE="\033[94m"
@@ -136,6 +137,87 @@ run_update() {
     exit 0
 }
 
+# Открыть все необходимые порты
+open_ports() {
+    PORTS_TO_OPEN="80,443,3478,46420,596:599,1400,5222,10000,11005,9339,9443,2233,543,25565,50000:50030"
+    
+    printf "${BLUE}Порты для открытия: ${PORTS_TO_OPEN}${RESET}\n\n"
+    printf "${YELLOW}Открыть эти порты? (y/n): ${RESET}"
+    read -r answer
+    
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        printf "\n${BLUE}Открываю порты...${RESET}\n"
+        printf "${GRAY}Это может занять около 20 секунд...${RESET}\n\n"
+        
+        if command -v xkeen >/dev/null 2>&1; then
+            PORTS_OUTPUT=$(xkeen -ap "$PORTS_TO_OPEN" 2>&1)
+            RESULT=$?
+            echo "$PORTS_OUTPUT"
+            echo ""
+            
+            if [ $RESULT -eq 0 ]; then
+                # Парсим вывод для сохранения новых портов
+                NEW_PORTS=$(echo "$PORTS_OUTPUT" | awk '/Новые порты прокси-клиента/{found=1; next} /Прокси-клиент уже работает/{found=0} found && /^[[:space:]]*[0-9]/{gsub(/^[[:space:]]+/, ""); print}' | tr '\n' ',' | sed 's/,$//')
+                if [ -n "$NEW_PORTS" ]; then
+                    echo "$NEW_PORTS" > "$OPENED_PORTS_FILE"
+                    printf "${GREEN}✓ Порты успешно открыты!${RESET}\n"
+                    printf "${GRAY}Новые порты сохранены: $NEW_PORTS${RESET}\n"
+                else
+                    printf "${GREEN}✓ Все порты уже были открыты ранее${RESET}\n"
+                fi
+            else
+                printf "${RED}Ошибка при открытии портов (код: $RESULT)${RESET}\n"
+            fi
+        else
+            printf "${RED}Ошибка: xkeen не найден${RESET}\n"
+        fi
+    else
+        printf "${GRAY}Отменено.${RESET}\n"
+    fi
+}
+
+# Закрыть порты, открытые при установке
+close_opened_ports() {
+    if [ ! -f "$OPENED_PORTS_FILE" ]; then
+        printf "${YELLOW}Файл с открытыми портами не найден.${RESET}\n"
+        printf "${GRAY}Возможно, порты не были открыты при установке.${RESET}\n"
+        return 1
+    fi
+    
+    PORTS_TO_CLOSE=$(cat "$OPENED_PORTS_FILE" 2>/dev/null | tr -d '\n\r ')
+    
+    if [ -z "$PORTS_TO_CLOSE" ]; then
+        printf "${YELLOW}Список портов пуст.${RESET}\n"
+        printf "${GRAY}При установке не были открыты новые порты.${RESET}\n"
+        return 1
+    fi
+    
+    printf "${BLUE}Порты, открытые при установке: ${PORTS_TO_CLOSE}${RESET}\n\n"
+    printf "${YELLOW}Закрыть эти порты? (y/n): ${RESET}"
+    read -r answer
+    
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        printf "\n${BLUE}Закрываю порты...${RESET}\n"
+        printf "${GRAY}Это может занять около 20 секунд...${RESET}\n\n"
+        
+        if command -v xkeen >/dev/null 2>&1; then
+            xkeen -dp "$PORTS_TO_CLOSE"
+            RESULT=$?
+            echo ""
+            if [ $RESULT -eq 0 ]; then
+                rm -f "$OPENED_PORTS_FILE"
+                printf "${GREEN}✓ Порты успешно закрыты!${RESET}\n"
+            else
+                printf "${RED}Ошибка при закрытии портов (код: $RESULT)${RESET}\n"
+            fi
+        else
+            printf "${RED}Ошибка: xkeen не найден${RESET}\n"
+        fi
+    else
+        printf "${GRAY}Отменено.${RESET}\n"
+    fi
+}
+
 # Принудительная проверка обновлений
 force_check_updates() {
     printf "${BLUE}Проверка обновлений...${RESET}\n\n"
@@ -182,7 +264,9 @@ show_menu() {
     printf "${BLUE}5)${RESET} Смена ссылки подписки\n"
     printf "${BLUE}6)${RESET} Очистка файлов\n"
     printf "${BLUE}7)${RESET} Проверить обновления\n"
-    printf "${BLUE}8)${RESET} О системе\n"
+    printf "${BLUE}8)${RESET} Открыть порты\n"
+    printf "${BLUE}9)${RESET} Закрыть порты\n"
+    printf "${BLUE}10)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
@@ -218,6 +302,16 @@ elif [ "$1" = "seturl" ]; then
 elif [ "$1" = "cleanup" ]; then
     $SCRIPT_DIR/xkeen_rotate.sh --cleanup
     exit 0
+elif [ "$1" = "openports" ]; then
+    show_header
+    printf "${BLUE}${BOLD}Открытие портов${RESET}\n\n"
+    open_ports
+    exit 0
+elif [ "$1" = "closeports" ]; then
+    show_header
+    printf "${BLUE}${BOLD}Закрытие портов${RESET}\n\n"
+    close_opened_ports
+    exit 0
 elif [ "$1" = "update" ]; then
     show_header
     force_check_updates
@@ -237,6 +331,8 @@ elif [ -n "$1" ]; then
     echo "  prosto sync         - синхронизация (использует сохранённый URL)"
     echo "  prosto seturl <URL> - установить URL подписки"
     echo "  prosto cleanup      - очистка файлов"
+    echo "  prosto openports    - открыть порты"
+    echo "  prosto closeports   - закрыть порты"
     echo "  prosto update       - проверить обновления"
     echo "  prosto version      - показать версию"
     exit 1
@@ -330,6 +426,22 @@ while true; do
             read -r dummy
             ;;
         8)
+            show_header
+            printf "${BLUE}${BOLD}Открытие портов${RESET}\n\n"
+            open_ports
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        9)
+            show_header
+            printf "${BLUE}${BOLD}Закрытие портов${RESET}\n\n"
+            close_opened_ports
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        10)
             show_header
             LOCAL_VERSION=$(get_local_version)
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n"

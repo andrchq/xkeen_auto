@@ -42,7 +42,7 @@ case "$1" in
                             /opt/root/scripts/xkeen_rotate.sh >/dev/null 2>&1 &
                         fi
                         
-                        break
+            break
                     fi
                     
                     sleep 5
