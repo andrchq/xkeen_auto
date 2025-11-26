@@ -140,6 +140,61 @@ run_update() {
     exit 0
 }
 
+# Функция открытия портов с таймаутом
+run_xkeen_ap_with_timeout() {
+    local PORTS="$1"
+    local TIMEOUT=15
+    local OUTPUT_FILE="/tmp/xkeen_ports_output_$$"
+    
+    # Запускаем команду в фоне
+    (xkeen -ap "$PORTS" > "$OUTPUT_FILE" 2>&1; echo $? > "${OUTPUT_FILE}.exit") &
+    local CMD_PID=$!
+    
+    # Ждём завершения с таймаутом
+    local WAITED=0
+    while [ $WAITED -lt $TIMEOUT ]; do
+        if ! kill -0 "$CMD_PID" 2>/dev/null; then
+            wait "$CMD_PID" 2>/dev/null
+            if [ -f "${OUTPUT_FILE}.exit" ]; then
+                local EXIT_CODE=$(cat "${OUTPUT_FILE}.exit")
+                cat "$OUTPUT_FILE" 2>/dev/null
+                rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.exit"
+                return $EXIT_CODE
+            fi
+            cat "$OUTPUT_FILE" 2>/dev/null
+            rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.exit"
+            return 0
+        fi
+        sleep 1
+        WAITED=$((WAITED + 1))
+        printf "\r${GRAY}Ожидание... %d/%d сек${RESET}" "$WAITED" "$TIMEOUT"
+    done
+    
+    # Таймаут
+    printf "\n${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд${RESET}\n" "$TIMEOUT"
+    kill -9 "$CMD_PID" 2>/dev/null
+    wait "$CMD_PID" 2>/dev/null
+    rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.exit"
+    return 124
+}
+
+# Перезапуск xkeen
+restart_xkeen_for_ports() {
+    printf "${BLUE}Перезапуск xkeen...${RESET}\n"
+    local RESTART_OUTPUT
+    RESTART_OUTPUT=$(xkeen -restart 2>&1)
+    echo "$RESTART_OUTPUT"
+    
+    if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+        printf "${GREEN}✓ xkeen успешно перезапущен${RESET}\n"
+        return 0
+    else
+        printf "${YELLOW}Ожидание запуска xkeen...${RESET}\n"
+        sleep 3
+        return 0
+    fi
+}
+
 # Открыть все необходимые порты
 open_ports() {
     PORTS_TO_OPEN="80,443,50000:50030"
@@ -150,26 +205,58 @@ open_ports() {
     
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
         printf "\n${BLUE}Открываю порты...${RESET}\n"
-        printf "${GRAY}Это может занять около 20 секунд...${RESET}\n\n"
+        printf "${GRAY}Таймаут: 15 секунд${RESET}\n\n"
         
         if command -v xkeen >/dev/null 2>&1; then
-            PORTS_OUTPUT=$(xkeen -ap "$PORTS_TO_OPEN" 2>&1)
-            RESULT=$?
-            echo "$PORTS_OUTPUT"
-            echo ""
+            MAX_ATTEMPTS=3
+            ATTEMPT=1
+            PORTS_SUCCESS=0
             
-            if [ $RESULT -eq 0 ]; then
-                # Парсим вывод для сохранения новых портов
-                NEW_PORTS=$(echo "$PORTS_OUTPUT" | awk '/Новые порты прокси-клиента/{found=1; next} /Прокси-клиент уже работает/{found=0} found && /^[[:space:]]*[0-9]/{gsub(/^[[:space:]]+/, ""); print}' | tr '\n' ',' | sed 's/,$//')
-                if [ -n "$NEW_PORTS" ]; then
-                    echo "$NEW_PORTS" > "$OPENED_PORTS_FILE"
-                    printf "${GREEN}✓ Порты успешно открыты!${RESET}\n"
-                    printf "${GRAY}Новые порты сохранены: $NEW_PORTS${RESET}\n"
+            while [ $ATTEMPT -le $MAX_ATTEMPTS ] && [ $PORTS_SUCCESS -eq 0 ]; do
+                printf "${BLUE}Попытка $ATTEMPT из $MAX_ATTEMPTS...${RESET}\n"
+                
+                PORTS_OUTPUT=$(run_xkeen_ap_with_timeout "$PORTS_TO_OPEN")
+                RESULT=$?
+                
+                echo ""
+                
+                if [ $RESULT -eq 124 ]; then
+                    # Таймаут - перезапускаем xkeen
+                    printf "${YELLOW}Команда зависла, перезапускаю xkeen...${RESET}\n\n"
+                    restart_xkeen_for_ports
+                    echo ""
+                    ATTEMPT=$((ATTEMPT + 1))
+                    continue
+                elif [ $RESULT -eq 0 ]; then
+                    # Успех
+                    echo "$PORTS_OUTPUT"
+                    echo ""
+                    
+                    NEW_PORTS=$(echo "$PORTS_OUTPUT" | awk '/Новые порты прокси-клиента/{found=1; next} /Прокси-клиент уже работает/{found=0} found && /^[[:space:]]*[0-9]/{gsub(/^[[:space:]]+/, ""); print}' | tr '\n' ',' | sed 's/,$//')
+                    if [ -n "$NEW_PORTS" ]; then
+                        echo "$NEW_PORTS" > "$OPENED_PORTS_FILE"
+                        printf "${GREEN}✓ Порты успешно открыты!${RESET}\n"
+                        printf "${GRAY}Новые порты сохранены: $NEW_PORTS${RESET}\n"
+                    else
+                        printf "${GREEN}✓ Все порты уже были открыты ранее${RESET}\n"
+                    fi
+                    PORTS_SUCCESS=1
                 else
-                    printf "${GREEN}✓ Все порты уже были открыты ранее${RESET}\n"
+                    # Другая ошибка
+                    printf "${RED}Ошибка при открытии портов (код: $RESULT)${RESET}\n"
+                    echo "$PORTS_OUTPUT"
+                    ATTEMPT=$((ATTEMPT + 1))
+                    
+                    if [ $ATTEMPT -le $MAX_ATTEMPTS ]; then
+                        printf "${YELLOW}Перезапускаю xkeen перед повторной попыткой...${RESET}\n"
+                        restart_xkeen_for_ports
+                        echo ""
+                    fi
                 fi
-            else
-                printf "${RED}Ошибка при открытии портов (код: $RESULT)${RESET}\n"
+            done
+            
+            if [ $PORTS_SUCCESS -eq 0 ]; then
+                printf "${RED}⚠ Не удалось открыть порты после $MAX_ATTEMPTS попыток${RESET}\n"
             fi
         else
             printf "${RED}Ошибка: xkeen не найден${RESET}\n"
