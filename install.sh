@@ -280,42 +280,41 @@ run_update() {
 }
 
 run_xkeen_ap_with_timeout() {
-    local PORTS="\$1"
-    local TIMEOUT=15
-    local OUTPUT_FILE="/tmp/xkeen_ports_output_\$\$"
-    (xkeen -ap "\$PORTS" > "\$OUTPUT_FILE" 2>&1; echo \$? > "\${OUTPUT_FILE}.exit") &
-    local CMD_PID=\$!
-    local WAITED=0
-    while [ \$WAITED -lt \$TIMEOUT ]; do
-        if ! kill -0 "\$CMD_PID" 2>/dev/null; then
-            wait "\$CMD_PID" 2>/dev/null
-            if [ -f "\${OUTPUT_FILE}.exit" ]; then
-                local EXIT_CODE=\$(cat "\${OUTPUT_FILE}.exit")
-                cat "\$OUTPUT_FILE" 2>/dev/null
-                rm -f "\$OUTPUT_FILE" "\${OUTPUT_FILE}.exit"
-                return \$EXIT_CODE
+    _PORTS="\$1"
+    _TIMEOUT=15
+    _OUTPUT_FILE="/tmp/xkeen_ports_output_\$\$"
+    (xkeen -ap "\$_PORTS" > "\$_OUTPUT_FILE" 2>&1; echo \$? > "\${_OUTPUT_FILE}.exit") &
+    _CMD_PID=\$!
+    _WAITED=0
+    while [ \$_WAITED -lt \$_TIMEOUT ]; do
+        if ! kill -0 "\$_CMD_PID" 2>/dev/null; then
+            wait "\$_CMD_PID" 2>/dev/null
+            if [ -f "\${_OUTPUT_FILE}.exit" ]; then
+                _EXIT_CODE=\$(cat "\${_OUTPUT_FILE}.exit")
+                cat "\$_OUTPUT_FILE" 2>/dev/null
+                rm -f "\$_OUTPUT_FILE" "\${_OUTPUT_FILE}.exit"
+                return \$_EXIT_CODE
             fi
-            cat "\$OUTPUT_FILE" 2>/dev/null
-            rm -f "\$OUTPUT_FILE" "\${OUTPUT_FILE}.exit"
+            cat "\$_OUTPUT_FILE" 2>/dev/null
+            rm -f "\$_OUTPUT_FILE" "\${_OUTPUT_FILE}.exit"
             return 0
         fi
         sleep 1
-        WAITED=\$((WAITED + 1))
-        printf "\r\${GRAY}Ожидание... %d/%d сек\${RESET}" "\$WAITED" "\$TIMEOUT"
+        _WAITED=\$((_WAITED + 1))
+        printf "\r\${GRAY}Ожидание... %d/%d сек\${RESET}" "\$_WAITED" "\$_TIMEOUT"
     done
-    printf "\n\${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд\${RESET}\n" "\$TIMEOUT"
-    kill -9 "\$CMD_PID" 2>/dev/null
-    wait "\$CMD_PID" 2>/dev/null
-    rm -f "\$OUTPUT_FILE" "\${OUTPUT_FILE}.exit"
+    printf "\n\${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд\${RESET}\n" "\$_TIMEOUT"
+    kill -9 "\$_CMD_PID" 2>/dev/null
+    wait "\$_CMD_PID" 2>/dev/null
+    rm -f "\$_OUTPUT_FILE" "\${_OUTPUT_FILE}.exit"
     return 124
 }
 
 restart_xkeen_for_ports() {
     printf "\${BLUE}Перезапуск xkeen...\${RESET}\n"
-    local RESTART_OUTPUT
-    RESTART_OUTPUT=\$(xkeen -restart 2>&1)
-    echo "\$RESTART_OUTPUT"
-    if echo "\$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+    _RESTART_OUTPUT=\$(xkeen -restart 2>&1)
+    echo "\$_RESTART_OUTPUT"
+    if echo "\$_RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
         printf "\${GREEN}✓ xkeen успешно перезапущен\${RESET}\n"
         return 0
     else
@@ -1401,53 +1400,52 @@ OPENED_PORTS_FILE="$INSTALL_DIR/.opened_ports"
 
 # Функция открытия портов с таймаутом
 open_ports_with_timeout() {
-    local TIMEOUT=15
-    local OUTPUT_FILE="/tmp/xkeen_ports_output_$$"
-    local PID_FILE="/tmp/xkeen_ports_pid_$$"
+    _TIMEOUT=15
+    _OUTPUT_FILE="/tmp/xkeen_ports_output_$$"
+    _PID_FILE="/tmp/xkeen_ports_pid_$$"
     
     # Запускаем команду в фоне
-    (xkeen -ap "$PORTS_TO_OPEN" > "$OUTPUT_FILE" 2>&1; echo $? > "${OUTPUT_FILE}.exit") &
-    local CMD_PID=$!
-    echo "$CMD_PID" > "$PID_FILE"
+    (xkeen -ap "$PORTS_TO_OPEN" > "$_OUTPUT_FILE" 2>&1; echo $? > "${_OUTPUT_FILE}.exit") &
+    _CMD_PID=$!
+    echo "$_CMD_PID" > "$_PID_FILE"
     
     # Ждём завершения с таймаутом
-    local WAITED=0
-    while [ $WAITED -lt $TIMEOUT ]; do
-        if ! kill -0 "$CMD_PID" 2>/dev/null; then
+    _WAITED=0
+    while [ $_WAITED -lt $_TIMEOUT ]; do
+        if ! kill -0 "$_CMD_PID" 2>/dev/null; then
             # Процесс завершился
-            wait "$CMD_PID" 2>/dev/null
-            if [ -f "${OUTPUT_FILE}.exit" ]; then
-                local EXIT_CODE=$(cat "${OUTPUT_FILE}.exit")
-                cat "$OUTPUT_FILE" 2>/dev/null
-                rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.exit" "$PID_FILE"
-                return $EXIT_CODE
+            wait "$_CMD_PID" 2>/dev/null
+            if [ -f "${_OUTPUT_FILE}.exit" ]; then
+                _EXIT_CODE=$(cat "${_OUTPUT_FILE}.exit")
+                cat "$_OUTPUT_FILE" 2>/dev/null
+                rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit" "$_PID_FILE"
+                return $_EXIT_CODE
             fi
-            cat "$OUTPUT_FILE" 2>/dev/null
-            rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.exit" "$PID_FILE"
+            cat "$_OUTPUT_FILE" 2>/dev/null
+            rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit" "$_PID_FILE"
             return 0
         fi
         sleep 1
-        WAITED=$((WAITED + 1))
-        printf "\r${GRAY}Ожидание... %d/%d сек${RESET}" "$WAITED" "$TIMEOUT"
+        _WAITED=$((_WAITED + 1))
+        printf "\r${GRAY}Ожидание... %d/%d сек${RESET}" "$_WAITED" "$_TIMEOUT"
     done
     
     # Таймаут - убиваем процесс
-    printf "\n${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд${RESET}\n" "$TIMEOUT"
-    kill -9 "$CMD_PID" 2>/dev/null
-    wait "$CMD_PID" 2>/dev/null
-    rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.exit" "$PID_FILE"
+    printf "\n${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд${RESET}\n" "$_TIMEOUT"
+    kill -9 "$_CMD_PID" 2>/dev/null
+    wait "$_CMD_PID" 2>/dev/null
+    rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit" "$_PID_FILE"
     return 124  # Код таймаута
 }
 
 # Функция перезапуска xkeen
 restart_xkeen() {
     log "Перезапуск xkeen..."
-    local RESTART_OUTPUT
-    RESTART_OUTPUT=$(xkeen -restart 2>&1)
-    echo "$RESTART_OUTPUT"
+    _RESTART_OUTPUT=$(xkeen -restart 2>&1)
+    echo "$_RESTART_OUTPUT"
     
     # Проверяем успешность запуска
-    if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+    if echo "$_RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
         log "✓ xkeen успешно перезапущен"
         return 0
     else
