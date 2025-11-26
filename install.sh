@@ -280,45 +280,45 @@ run_update() {
 }
 
 run_xkeen_ap_with_timeout() {
-    _PORTS="\$1"
+    _PORTS="$1"
     _TIMEOUT=15
-    _OUTPUT_FILE="/tmp/xkeen_ports_output_\$\$"
-    (xkeen -ap "\$_PORTS" > "\$_OUTPUT_FILE" 2>&1; echo \$? > "\${_OUTPUT_FILE}.exit") &
-    _CMD_PID=\$!
+    _OUTPUT_FILE="/tmp/xkeen_ports_output_$$"
+    (xkeen -ap "$_PORTS" > "$_OUTPUT_FILE" 2>&1; echo $? > "${_OUTPUT_FILE}.exit") &
+    _CMD_PID=$!
     _WAITED=0
-    while [ \$_WAITED -lt \$_TIMEOUT ]; do
-        if ! kill -0 "\$_CMD_PID" 2>/dev/null; then
-            wait "\$_CMD_PID" 2>/dev/null
-            if [ -f "\${_OUTPUT_FILE}.exit" ]; then
-                _EXIT_CODE=\$(cat "\${_OUTPUT_FILE}.exit")
-                cat "\$_OUTPUT_FILE" 2>/dev/null
-                rm -f "\$_OUTPUT_FILE" "\${_OUTPUT_FILE}.exit"
-                return \$_EXIT_CODE
+    while [ $_WAITED -lt $_TIMEOUT ]; do
+        if ! kill -0 "$_CMD_PID" 2>/dev/null; then
+            wait "$_CMD_PID" 2>/dev/null
+            if [ -f "${_OUTPUT_FILE}.exit" ]; then
+                _EXIT_CODE=$(cat "${_OUTPUT_FILE}.exit")
+                cat "$_OUTPUT_FILE" 2>/dev/null
+                rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit"
+                return $_EXIT_CODE
             fi
-            cat "\$_OUTPUT_FILE" 2>/dev/null
-            rm -f "\$_OUTPUT_FILE" "\${_OUTPUT_FILE}.exit"
+            cat "$_OUTPUT_FILE" 2>/dev/null
+            rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit"
             return 0
         fi
         sleep 1
-        _WAITED=\$((_WAITED + 1))
-        printf "\r\${GRAY}Ожидание... %d/%d сек\${RESET}" "\$_WAITED" "\$_TIMEOUT"
+        _WAITED=$((_WAITED + 1))
+        printf "\r${GRAY}Ожидание... %d/%d сек${RESET}" "$_WAITED" "$_TIMEOUT"
     done
-    printf "\n\${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд\${RESET}\n" "\$_TIMEOUT"
-    kill -9 "\$_CMD_PID" 2>/dev/null
-    wait "\$_CMD_PID" 2>/dev/null
-    rm -f "\$_OUTPUT_FILE" "\${_OUTPUT_FILE}.exit"
+    printf "\n${YELLOW}⚠ Таймаут! Команда не завершилась за %d секунд${RESET}\n" "$_TIMEOUT"
+    kill -9 "$_CMD_PID" 2>/dev/null
+    wait "$_CMD_PID" 2>/dev/null
+    rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit"
     return 124
 }
 
 restart_xkeen_for_ports() {
-    printf "\${BLUE}Перезапуск xkeen...\${RESET}\n"
-    _RESTART_OUTPUT=\$(xkeen -restart 2>&1)
-    echo "\$_RESTART_OUTPUT"
-    if echo "\$_RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
-        printf "\${GREEN}✓ xkeen успешно перезапущен\${RESET}\n"
+    printf "${BLUE}Перезапуск xkeen...${RESET}\n"
+    _RESTART_OUTPUT=$(xkeen -restart 2>&1)
+    echo "$_RESTART_OUTPUT"
+    if echo "$_RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+        printf "${GREEN}✓ xkeen успешно перезапущен${RESET}\n"
         return 0
     else
-        printf "\${YELLOW}Ожидание запуска xkeen...\${RESET}\n"
+        printf "${YELLOW}Ожидание запуска xkeen...${RESET}\n"
         sleep 3
         return 0
     fi
@@ -326,58 +326,58 @@ restart_xkeen_for_ports() {
 
 open_ports() {
     PORTS_TO_OPEN="80,443,50000:50030"
-    printf "\${BLUE}Порты для открытия: \${PORTS_TO_OPEN}\${RESET}\n\n"
-    printf "\${YELLOW}Открыть эти порты? (y/n): \${RESET}"
+    printf "${BLUE}Порты для открытия: ${PORTS_TO_OPEN}${RESET}\n\n"
+    printf "${YELLOW}Открыть эти порты? (y/n): ${RESET}"
     read -r answer
-    if [ "\$answer" = "y" ] || [ "\$answer" = "Y" ]; then
-        printf "\n\${BLUE}Открываю порты...\${RESET}\n"
-        printf "\${GRAY}Таймаут: 15 секунд\${RESET}\n\n"
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        printf "\n${BLUE}Открываю порты...${RESET}\n"
+        printf "${GRAY}Таймаут: 15 секунд${RESET}\n\n"
         if command -v xkeen >/dev/null 2>&1; then
             MAX_ATTEMPTS=3
             ATTEMPT=1
             PORTS_SUCCESS=0
-            while [ \$ATTEMPT -le \$MAX_ATTEMPTS ] && [ \$PORTS_SUCCESS -eq 0 ]; do
-                printf "\${BLUE}Попытка \$ATTEMPT из \$MAX_ATTEMPTS...\${RESET}\n"
-                PORTS_OUTPUT=\$(run_xkeen_ap_with_timeout "\$PORTS_TO_OPEN")
-                RESULT=\$?
+            while [ $ATTEMPT -le $MAX_ATTEMPTS ] && [ $PORTS_SUCCESS -eq 0 ]; do
+                printf "${BLUE}Попытка $ATTEMPT из $MAX_ATTEMPTS...${RESET}\n"
+                PORTS_OUTPUT=$(run_xkeen_ap_with_timeout "$PORTS_TO_OPEN")
+                RESULT=$?
                 echo ""
-                if [ \$RESULT -eq 124 ]; then
-                    printf "\${YELLOW}Команда зависла, перезапускаю xkeen...\${RESET}\n\n"
+                if [ $RESULT -eq 124 ]; then
+                    printf "${YELLOW}Команда зависла, перезапускаю xkeen...${RESET}\n\n"
                     restart_xkeen_for_ports
                     echo ""
-                    ATTEMPT=\$((ATTEMPT + 1))
+                    ATTEMPT=$((ATTEMPT + 1))
                     continue
-                elif [ \$RESULT -eq 0 ]; then
-                    echo "\$PORTS_OUTPUT"
+                elif [ $RESULT -eq 0 ]; then
+                    echo "$PORTS_OUTPUT"
                     echo ""
-                    NEW_PORTS=\$(echo "\$PORTS_OUTPUT" | awk '/Новые порты прокси-клиента/{found=1; next} /Прокси-клиент уже работает/{found=0} found && /^[[:space:]]*[0-9]/{gsub(/^[[:space:]]+/, ""); print}' | tr '\n' ',' | sed 's/,\$//')
-                    if [ -n "\$NEW_PORTS" ]; then
-                        echo "\$NEW_PORTS" > "\$OPENED_PORTS_FILE"
-                        printf "\${GREEN}✓ Порты успешно открыты!\${RESET}\n"
-                        printf "\${GRAY}Новые порты сохранены: \$NEW_PORTS\${RESET}\n"
+                    NEW_PORTS=$(echo "$PORTS_OUTPUT" | awk '/Новые порты прокси-клиента/{found=1; next} /Прокси-клиент уже работает/{found=0} found && /^[[:space:]]*[0-9]/{gsub(/^[[:space:]]+/, ""); print}' | tr '\n' ',' | sed 's/,$//')
+                    if [ -n "$NEW_PORTS" ]; then
+                        echo "$NEW_PORTS" > "$OPENED_PORTS_FILE"
+                        printf "${GREEN}✓ Порты успешно открыты!${RESET}\n"
+                        printf "${GRAY}Новые порты сохранены: $NEW_PORTS${RESET}\n"
                     else
-                        printf "\${GREEN}✓ Все порты уже были открыты ранее\${RESET}\n"
+                        printf "${GREEN}✓ Все порты уже были открыты ранее${RESET}\n"
                     fi
                     PORTS_SUCCESS=1
                 else
-                    printf "\${RED}Ошибка при открытии портов (код: \$RESULT)\${RESET}\n"
-                    echo "\$PORTS_OUTPUT"
-                    ATTEMPT=\$((ATTEMPT + 1))
-                    if [ \$ATTEMPT -le \$MAX_ATTEMPTS ]; then
-                        printf "\${YELLOW}Перезапускаю xkeen перед повторной попыткой...\${RESET}\n"
+                    printf "${RED}Ошибка при открытии портов (код: $RESULT)${RESET}\n"
+                    echo "$PORTS_OUTPUT"
+                    ATTEMPT=$((ATTEMPT + 1))
+                    if [ $ATTEMPT -le $MAX_ATTEMPTS ]; then
+                        printf "${YELLOW}Перезапускаю xkeen перед повторной попыткой...${RESET}\n"
                         restart_xkeen_for_ports
                         echo ""
                     fi
                 fi
             done
-            if [ \$PORTS_SUCCESS -eq 0 ]; then
-                printf "\${RED}⚠ Не удалось открыть порты после \$MAX_ATTEMPTS попыток\${RESET}\n"
+            if [ $PORTS_SUCCESS -eq 0 ]; then
+                printf "${RED}⚠ Не удалось открыть порты после $MAX_ATTEMPTS попыток${RESET}\n"
             fi
         else
-            printf "\${RED}Ошибка: xkeen не найден\${RESET}\n"
+            printf "${RED}Ошибка: xkeen не найден${RESET}\n"
         fi
     else
-        printf "\${GRAY}Отменено.\${RESET}\n"
+        printf "${GRAY}Отменено.${RESET}\n"
     fi
 }
 
@@ -886,12 +886,12 @@ while true; do
             printf "${BLUE}${BOLD}Перезапуск xkeen${RESET}\n\n"
             printf "${YELLOW}Выполнить перезапуск xkeen? (y/n): ${RESET}"
             read -r confirm
-            if [ "\$confirm" = "y" ] || [ "\$confirm" = "Y" ]; then
+            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                 printf "\n${BLUE}Перезапуск xkeen...${RESET}\n\n"
-                RESTART_OUTPUT=\$(xkeen -restart 2>&1)
-                echo "\$RESTART_OUTPUT"
+                RESTART_OUTPUT=$(xkeen -restart 2>&1)
+                echo "$RESTART_OUTPUT"
                 echo ""
-                if echo "\$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+                if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
                     printf "${GREEN}✓ xkeen успешно перезапущен${RESET}\n"
                 else
                     printf "${YELLOW}Перезапуск выполнен${RESET}\n"
@@ -905,9 +905,9 @@ while true; do
             ;;
         13)
             show_header
-            LOCAL_VERSION=\$(get_local_version)
+            LOCAL_VERSION=$(get_local_version)
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n"
-            printf "${GRAY}Версия: \${LOCAL_VERSION}${RESET}\n\n"
+            printf "${GRAY}Версия: ${LOCAL_VERSION}${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
             printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
             printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
