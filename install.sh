@@ -666,7 +666,8 @@ show_menu() {
     printf "${BLUE}9)${RESET} Проверить обновления\n"
     printf "${BLUE}10)${RESET} Открыть порты\n"
     printf "${BLUE}11)${RESET} Закрыть порты\n"
-    printf "${BLUE}12)${RESET} О системе\n"
+    printf "${BLUE}12)${RESET} Перезапуск xkeen\n"
+    printf "${BLUE}13)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
     echo ""
     printf "${BLUE}Выберите действие: ${RESET}"
@@ -883,9 +884,31 @@ while true; do
             ;;
         12)
             show_header
-            LOCAL_VERSION=$(get_local_version)
+            printf "${BLUE}${BOLD}Перезапуск xkeen${RESET}\n\n"
+            printf "${YELLOW}Выполнить перезапуск xkeen? (y/n): ${RESET}"
+            read -r confirm
+            if [ "\$confirm" = "y" ] || [ "\$confirm" = "Y" ]; then
+                printf "\n${BLUE}Перезапуск xkeen...${RESET}\n\n"
+                RESTART_OUTPUT=\$(xkeen -restart 2>&1)
+                echo "\$RESTART_OUTPUT"
+                echo ""
+                if echo "\$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
+                    printf "${GREEN}✓ xkeen успешно перезапущен${RESET}\n"
+                else
+                    printf "${YELLOW}Перезапуск выполнен${RESET}\n"
+                fi
+            else
+                printf "${GRAY}Отменено.${RESET}\n"
+            fi
+            echo ""
+            printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
+            read -r dummy
+            ;;
+        13)
+            show_header
+            LOCAL_VERSION=\$(get_local_version)
             printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n"
-            printf "${GRAY}Версия: ${LOCAL_VERSION}${RESET}\n\n"
+            printf "${GRAY}Версия: \${LOCAL_VERSION}${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
             printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
             printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
