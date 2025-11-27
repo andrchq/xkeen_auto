@@ -17,6 +17,10 @@ YELLOW="\033[93m"
 RED="\033[91m"
 RESET="\033[0m"
 BOLD="\033[1m"
+ORANGE="\033[38;5;214m"
+CYAN="\033[96m"
+
+LINE="─────────────────────────────────────────────────"
 
 check_and_install_whiptail() {
     if command -v whiptail >/dev/null 2>&1; then
@@ -53,32 +57,34 @@ check_and_install_whiptail() {
 
 show_header() {
     clear
-    printf "${GRAY}╔══════════════════════════════════════════════════════════════════════════════════════╗${RESET}\n"
-    printf "${GRAY}║${RESET}${BLUE}${BOLD}                                    простовпн                                          ${RESET}${GRAY}║${RESET}\n"
-    printf "${GRAY}╚══════════════════════════════════════════════════════════════════════════════════════╝${RESET}\n"
+    printf "${BLUE}${BOLD}🤲🏼 ПРОСТОВПН${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n"
     echo ""
 }
 
 show_section() {
     TITLE="$1"
-    printf "${GRAY}╔════════════════════════════════════════════════════════════╗${RESET}\n"
-    printf "${GRAY}║${RESET} ${BLUE}простовпн | ${BOLD}${TITLE}${RESET}$(printf '%*s' $((57 - ${#TITLE})) '')${GRAY}║${RESET}\n"
-    printf "${GRAY}╚════════════════════════════════════════════════════════════╝${RESET}\n"
-    echo ""
+    printf "\n${ORANGE}${LINE}${RESET}\n"
+    printf "${BLUE}${BOLD}${TITLE}${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n\n"
+}
+
+show_log() {
+    printf "${CYAN}$1${RESET}\n"
 }
 
 countdown() {
     SECONDS=${1:-5}
-    printf "${GRAY}"
-    for i in $(seq $SECONDS -1 1); do
-        printf "\r   [$i] "
+    while [ $SECONDS -gt 0 ]; do
+        printf "\r${YELLOW}[%d]${RESET} " "$SECONDS"
         sleep 1
+        SECONDS=$((SECONDS - 1))
     done
-    printf "\r        \r${RESET}"
+    printf "\r    \r"
 }
 
 log() {
-    printf "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] $*${RESET}\n"
+    printf "${CYAN}[$(date '+%Y-%m-%d %H:%M:%S')] $*${RESET}\n"
 }
 
 error() {
@@ -95,7 +101,7 @@ dialog_msgbox() {
         show_header
         show_section "$TITLE"
         echo "$MSG"
-        echo ""
+        printf "${ORANGE}${LINE}${RESET}\n"
         printf "${YELLOW}Нажмите Enter для продолжения...${RESET}"
         read -r dummy
     fi
@@ -111,7 +117,7 @@ dialog_yesno() {
         show_header
         show_section "$TITLE"
         echo "$MSG"
-        echo ""
+        printf "${ORANGE}${LINE}${RESET}\n"
         printf "${BLUE}Ваш выбор (y/n): ${RESET}"
         read -r answer
         [ "$answer" = "y" ] || [ "$answer" = "Y" ]
@@ -130,7 +136,7 @@ dialog_inputbox() {
         show_header
         show_section "$TITLE"
         echo "$MSG"
-        echo ""
+        printf "${ORANGE}${LINE}${RESET}\n"
         printf "${BLUE}> ${RESET}"
         read -r result
         echo "$result"
@@ -148,13 +154,13 @@ dialog_menu() {
         show_header
         show_section "$TITLE"
         echo "$MSG"
-        echo ""
+        printf "${ORANGE}${LINE}${RESET}\n"
         i=1
         while [ $# -gt 0 ]; do
             printf "${BLUE}  $1)${RESET} $2\n"
             shift 2
         done
-        echo ""
+        printf "${ORANGE}${LINE}${RESET}\n"
         printf "${BLUE}Выберите вариант: ${RESET}"
         read -r result
         echo "$result"
@@ -188,13 +194,36 @@ YELLOW="\033[93m"
 RED="\033[91m"
 RESET="\033[0m"
 BOLD="\033[1m"
+ORANGE="\033[38;5;214m"
+CYAN="\033[96m"
+
+LINE="─────────────────────────────────────────────────"
 
 show_header() {
     clear
-    printf "${GRAY}╔══════════════════════════════════════════════════════════════════════════════════════╗${RESET}\n"
-    printf "${GRAY}║${RESET}${BLUE}${BOLD}                                    простовпн                                          ${RESET}${GRAY}║${RESET}\n"
-    printf "${GRAY}╚══════════════════════════════════════════════════════════════════════════════════════╝${RESET}\n"
+    printf "${BLUE}${BOLD}🤲🏼 ПРОСТОВПН${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n"
     echo ""
+}
+
+show_section() {
+    printf "\n${ORANGE}${LINE}${RESET}\n"
+    printf "${BLUE}${BOLD}$1${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n\n"
+}
+
+show_log() {
+    printf "${CYAN}$1${RESET}\n"
+}
+
+show_countdown() {
+    _SECS=${1:-3}
+    while [ $_SECS -gt 0 ]; do
+        printf "\r${YELLOW}[%d]${RESET} " "$_SECS"
+        sleep 1
+        _SECS=$((_SECS - 1))
+    done
+    printf "\r    \r"
 }
 
 get_subscription_url() {
@@ -209,10 +238,36 @@ save_subscription_url() {
 
 get_local_version() {
     if [ -f "$VERSION_FILE" ]; then
-        cat "$VERSION_FILE" 2>/dev/null | tr -d '\n\r '
+        _CONTENT=$(cat "$VERSION_FILE" 2>/dev/null)
+        _VER=$(echo "$_CONTENT" | grep "^version:" | cut -d: -f2 | tr -d ' \n\r')
+        if [ -n "$_VER" ]; then
+            echo "$_VER"
+        else
+            echo "$_CONTENT" | head -n1 | tr -d '\n\r '
+        fi
     else
         echo "0.0.0"
     fi
+}
+
+get_file_version() {
+    _FILENAME="$1"
+    if [ -f "$VERSION_FILE" ]; then
+        _VER=$(grep "^${_FILENAME}:" "$VERSION_FILE" 2>/dev/null | cut -d: -f2 | tr -d ' \n\r')
+        [ -n "$_VER" ] && echo "$_VER" || echo "0.0.0"
+    else
+        echo "0.0.0"
+    fi
+}
+
+get_update_type() {
+    _VERSION_CONTENT="$1"
+    echo "$_VERSION_CONTENT" | grep "^type:" | cut -d: -f2 | tr -d ' '
+}
+
+get_main_version() {
+    _VERSION_CONTENT="$1"
+    echo "$_VERSION_CONTENT" | grep "^version:" | cut -d: -f2 | tr -d ' '
 }
 
 version_greater() {
@@ -251,7 +306,8 @@ check_for_updates() {
         return 1
     fi
     LOCAL_VERSION=$(get_local_version)
-    REMOTE_VERSION=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null | tr -d '\n\r ')
+    REMOTE_CONTENT=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null)
+    REMOTE_VERSION=$(get_main_version "$REMOTE_CONTENT")
     [ -z "$REMOTE_VERSION" ] && return 1
     version_greater "$LOCAL_VERSION" "$REMOTE_VERSION" && return 0
     return 1
@@ -259,21 +315,83 @@ check_for_updates() {
 
 offer_update() {
     LOCAL_VERSION=$(get_local_version)
-    REMOTE_VERSION=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null | tr -d '\n\r ')
-    printf "\n${YELLOW}╔════════════════════════════════════════════════════════════╗${RESET}\n"
-    printf "${YELLOW}║${RESET}  ${BOLD}🔄 Доступно обновление!${RESET}                                   ${YELLOW}║${RESET}\n"
-    printf "${YELLOW}╚════════════════════════════════════════════════════════════╝${RESET}\n"
-    printf "\n${GRAY}Текущая версия: ${LOCAL_VERSION}${RESET}\n"
-    printf "${GREEN}Новая версия:   ${REMOTE_VERSION}${RESET}\n"
-    printf "\n${BLUE}Обновить систему сейчас? (y/n): ${RESET}"
+    REMOTE_CONTENT=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null)
+    REMOTE_VERSION=$(get_main_version "$REMOTE_CONTENT")
+    UPDATE_TYPE=$(get_update_type "$REMOTE_CONTENT")
+    
+    case "$UPDATE_TYPE" in
+        critical) TYPE_COLOR="$RED"; TYPE_TEXT="КРИТИЧЕСКОЕ" ;;
+        recommended) TYPE_COLOR="$YELLOW"; TYPE_TEXT="РЕКОМЕНДУЕМОЕ" ;;
+        *) TYPE_COLOR="$GRAY"; TYPE_TEXT="необязательное" ;;
+    esac
+    
+    show_section "🔄 Доступно обновление!"
+    printf "Текущая версия:  ${GRAY}${LOCAL_VERSION}${RESET}\n"
+    printf "Новая версия:    ${GREEN}${REMOTE_VERSION}${RESET}\n"
+    printf "Тип обновления:  ${TYPE_COLOR}${TYPE_TEXT}${RESET}\n"
+    printf "\n${ORANGE}${LINE}${RESET}\n\n"
+    printf "${BLUE}Обновить систему сейчас? (y/n): ${RESET}"
     read -r answer
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
         run_update
     fi
 }
 
+smart_update() {
+    REMOTE_CONTENT="$1"
+    show_section "Обновление системы"
+    UPDATED_COUNT=0
+    
+    for _FILE in xkeen_rotate.sh xkeen_sync.sh network_watchdog.sh startup_notify.sh xkeen_restart.sh; do
+        LOCAL_FILE_VER=$(get_file_version "$_FILE")
+        REMOTE_FILE_VER=$(echo "$REMOTE_CONTENT" | grep "^${_FILE}:" | cut -d: -f2 | tr -d ' ')
+        [ -z "$REMOTE_FILE_VER" ] && continue
+        if version_greater "$LOCAL_FILE_VER" "$REMOTE_FILE_VER"; then
+            printf "${CYAN}Обновляю $_FILE...${RESET} "
+            if curl -sSL "$GITHUB_RAW/$_FILE" -o "$SCRIPT_DIR/$_FILE" 2>/dev/null; then
+                chmod +x "$SCRIPT_DIR/$_FILE"
+                printf "${GREEN}✓${RESET}\n"
+                UPDATED_COUNT=$((UPDATED_COUNT + 1))
+            else
+                printf "${RED}✗${RESET}\n"
+            fi
+        fi
+    done
+    
+    LOCAL_PROSTO_VER=$(get_file_version "prosto")
+    REMOTE_PROSTO_VER=$(echo "$REMOTE_CONTENT" | grep "^prosto:" | cut -d: -f2 | tr -d ' ')
+    if [ -n "$REMOTE_PROSTO_VER" ] && version_greater "$LOCAL_PROSTO_VER" "$REMOTE_PROSTO_VER"; then
+        printf "${CYAN}Обновляю prosto...${RESET} "
+        if curl -sSL "$GITHUB_RAW/prosto" -o "/opt/bin/prosto" 2>/dev/null; then
+            chmod +x "/opt/bin/prosto"
+            printf "${GREEN}✓${RESET}\n"
+            UPDATED_COUNT=$((UPDATED_COUNT + 1))
+        else
+            printf "${RED}✗${RESET}\n"
+        fi
+    fi
+    
+    printf "${CYAN}Обновляю VERSION...${RESET} "
+    if curl -sSL "$GITHUB_RAW/VERSION" -o "$VERSION_FILE" 2>/dev/null; then
+        printf "${GREEN}✓${RESET}\n"
+    else
+        printf "${RED}✗${RESET}\n"
+    fi
+    
+    printf "${ORANGE}${LINE}${RESET}\n\n"
+    if [ $UPDATED_COUNT -gt 0 ]; then
+        printf "${GREEN}✓ Обновлено файлов: $UPDATED_COUNT${RESET}\n"
+        printf "${GRAY}Перезапустите prosto для применения изменений${RESET}\n"
+    else
+        printf "${GREEN}✓ Все файлы актуальны${RESET}\n"
+    fi
+    rm -f "$UPDATE_CHECK_FILE"
+}
+
 run_update() {
-    printf "\n${GREEN}Запускаю обновление...${RESET}\n\n"
+    show_section "Полное обновление"
+    printf "${CYAN}Запускаю установщик...${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n\n"
     rm -f "$UPDATE_CHECK_FILE"
     curl -sSL "$GITHUB_RAW/install.sh" | sh
     exit 0
@@ -310,18 +428,40 @@ run_xkeen_ap_with_timeout() {
     return 124
 }
 
+run_xkeen_restart_with_timeout() {
+    _TIMEOUT=10
+    _OUTPUT_FILE="/tmp/xkeen_restart_output_$$"
+    (xkeen -restart > "$_OUTPUT_FILE" 2>&1; echo $? > "${_OUTPUT_FILE}.exit") &
+    _CMD_PID=$!
+    _WAITED=0
+    while [ $_WAITED -lt $_TIMEOUT ]; do
+        if ! kill -0 "$_CMD_PID" 2>/dev/null; then
+            wait "$_CMD_PID" 2>/dev/null
+            if [ -f "${_OUTPUT_FILE}.exit" ]; then
+                cat "$_OUTPUT_FILE" 2>/dev/null
+                rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit"
+                return 0
+            fi
+            cat "$_OUTPUT_FILE" 2>/dev/null
+            rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit"
+            return 0
+        fi
+        sleep 1
+        _WAITED=$((_WAITED + 1))
+    done
+    kill -9 "$_CMD_PID" 2>/dev/null
+    wait "$_CMD_PID" 2>/dev/null
+    cat "$_OUTPUT_FILE" 2>/dev/null
+    rm -f "$_OUTPUT_FILE" "${_OUTPUT_FILE}.exit"
+    return 0
+}
+
 restart_xkeen_for_ports() {
-    printf "${BLUE}Перезапуск xkeen...${RESET}\n"
-    _RESTART_OUTPUT=$(xkeen -restart 2>&1)
-    echo "$_RESTART_OUTPUT"
-    if echo "$_RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
-        printf "${GREEN}✓ xkeen успешно перезапущен${RESET}\n"
-        return 0
-    else
-        printf "${YELLOW}Ожидание запуска xkeen...${RESET}\n"
-        sleep 3
-        return 0
-    fi
+    show_log "Перезапуск xkeen..."
+    run_xkeen_restart_with_timeout
+    printf "${GREEN}✓ xkeen перезапущен${RESET}\n"
+    sleep 2
+    return 0
 }
 
 open_ports() {
@@ -571,7 +711,7 @@ clear_forced() {
 
 favorite_menu() {
     show_header
-    printf "${BLUE}${BOLD}Избранная страна${RESET}\n\n"
+    show_section "Избранная страна"
     FAVORITE=$(get_favorite_country)
     if [ -n "$FAVORITE" ]; then
         printf "Текущая избранная: ${YELLOW}★ $FAVORITE${RESET}\n\n"
@@ -581,7 +721,7 @@ favorite_menu() {
     printf "${BLUE}1)${RESET} Установить избранную страну\n"
     printf "${BLUE}2)${RESET} Сбросить избранную страну\n"
     printf "${BLUE}0)${RESET} Назад\n"
-    echo ""
+    printf "${ORANGE}${LINE}${RESET}\n"
     printf "${BLUE}Выберите действие: ${RESET}"
     read -r choice
     case $choice in
@@ -593,10 +733,10 @@ favorite_menu() {
 
 forced_menu() {
     show_header
-    printf "${BLUE}${BOLD}Выбрать страну принудительно${RESET}\n\n"
+    show_section "Выбрать страну принудительно"
     FORCED=$(get_forced_country)
     if [ -n "$FORCED" ]; then
-        printf "Текущий выбор: ${BLUE}⚡ $FORCED${RESET}\n"
+        printf "Текущий выбор: ${CYAN}⚡ $FORCED${RESET}\n"
         printf "${GRAY}(сбросится через 5 минут или при недоступности)${RESET}\n\n"
     else
         printf "${GRAY}Принудительный выбор не установлен.${RESET}\n\n"
@@ -604,7 +744,7 @@ forced_menu() {
     printf "${BLUE}1)${RESET} Выбрать страну принудительно\n"
     printf "${BLUE}2)${RESET} Сбросить принудительный выбор\n"
     printf "${BLUE}0)${RESET} Назад\n"
-    echo ""
+    printf "${ORANGE}${LINE}${RESET}\n"
     printf "${BLUE}Выберите действие: ${RESET}"
     read -r choice
     case $choice in
@@ -615,27 +755,45 @@ forced_menu() {
 }
 
 force_check_updates() {
-    printf "${BLUE}Проверка обновлений...${RESET}\n\n"
+    show_section "Проверка обновлений"
     rm -f "$UPDATE_CHECK_FILE"
     if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
         printf "${RED}Нет подключения к интернету${RESET}\n"
         return 1
     fi
     LOCAL_VERSION=$(get_local_version)
-    printf "Текущая версия: ${BLUE}${LOCAL_VERSION}${RESET}\n"
+    printf "Текущая версия: ${GRAY}${LOCAL_VERSION}${RESET}\n"
     printf "Проверяю удалённую версию... "
-    REMOTE_VERSION=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null | tr -d '\n\r ')
+    REMOTE_CONTENT=$(curl -sL --max-time 5 "$GITHUB_RAW/VERSION" 2>/dev/null)
+    REMOTE_VERSION=$(get_main_version "$REMOTE_CONTENT")
+    UPDATE_TYPE=$(get_update_type "$REMOTE_CONTENT")
     if [ -z "$REMOTE_VERSION" ]; then
         printf "${RED}ошибка загрузки${RESET}\n"
         return 1
     fi
-    printf "${GREEN}${REMOTE_VERSION}${RESET}\n\n"
+    printf "${GREEN}${REMOTE_VERSION}${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n\n"
     if version_greater "$LOCAL_VERSION" "$REMOTE_VERSION"; then
-        printf "${YELLOW}Доступна новая версия: ${REMOTE_VERSION}${RESET}\n\n"
-        printf "${BLUE}Обновить сейчас? (y/n): ${RESET}"
+        case "$UPDATE_TYPE" in
+            critical) TYPE_COLOR="$RED"; TYPE_TEXT="КРИТИЧЕСКОЕ" ;;
+            recommended) TYPE_COLOR="$YELLOW"; TYPE_TEXT="РЕКОМЕНДУЕМОЕ" ;;
+            *) TYPE_COLOR="$GRAY"; TYPE_TEXT="необязательное" ;;
+        esac
+        printf "${GREEN}Доступна новая версия: ${REMOTE_VERSION}${RESET}\n"
+        printf "Тип обновления: ${TYPE_COLOR}${TYPE_TEXT}${RESET}\n\n"
+        printf "${GRAY}Файлы для обновления:${RESET}\n"
+        for _FILE in prosto xkeen_rotate.sh xkeen_sync.sh network_watchdog.sh startup_notify.sh xkeen_restart.sh; do
+            LOCAL_FILE_VER=$(get_file_version "$_FILE")
+            REMOTE_FILE_VER=$(echo "$REMOTE_CONTENT" | grep "^${_FILE}:" | cut -d: -f2 | tr -d ' ')
+            [ -z "$REMOTE_FILE_VER" ] && continue
+            if version_greater "$LOCAL_FILE_VER" "$REMOTE_FILE_VER"; then
+                printf "  ${CYAN}$_FILE${RESET}: $LOCAL_FILE_VER → ${GREEN}$REMOTE_FILE_VER${RESET}\n"
+            fi
+        done
+        printf "\n${BLUE}Обновить сейчас? (y/n): ${RESET}"
         read -r answer
         if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-            run_update
+            smart_update "$REMOTE_CONTENT"
         fi
     else
         printf "${GREEN}✓ У вас установлена актуальная версия!${RESET}\n"
@@ -647,13 +805,13 @@ show_menu() {
     LOCAL_VERSION=$(get_local_version)
     FAVORITE=$(get_favorite_country)
     FORCED=$(get_forced_country)
-    printf "${BLUE}${BOLD}Управление системой ротации серверов${RESET} ${GRAY}v${LOCAL_VERSION}${RESET}\n"
+    printf "${GRAY}v${LOCAL_VERSION}${RESET}\n"
     if [ -n "$FAVORITE" ] || [ -n "$FORCED" ]; then
         [ -n "$FAVORITE" ] && printf "${YELLOW}★ Избранная: $FAVORITE${RESET}  "
-        [ -n "$FORCED" ] && printf "${BLUE}⚡ Принудительная: $FORCED${RESET}"
+        [ -n "$FORCED" ] && printf "${CYAN}⚡ Принудительная: $FORCED${RESET}"
         echo ""
     fi
-    echo ""
+    printf "${ORANGE}${LINE}${RESET}\n\n"
     printf "${BLUE}1)${RESET} Показать статус серверов\n"
     printf "${BLUE}2)${RESET} Автоматическая ротация\n"
     printf "${BLUE}3)${RESET} Выбрать страну принудительно\n"
@@ -668,7 +826,7 @@ show_menu() {
     printf "${BLUE}12)${RESET} Перезапуск xkeen\n"
     printf "${BLUE}13)${RESET} О системе\n"
     printf "${BLUE}0)${RESET} Выход\n"
-    echo ""
+    printf "${ORANGE}${LINE}${RESET}\n"
     printf "${BLUE}Выберите действие: ${RESET}"
 }
 
@@ -730,12 +888,12 @@ elif [ "$1" = "clearforced" ]; then
     exit 0
 elif [ "$1" = "openports" ]; then
     show_header
-    printf "${BLUE}${BOLD}Открытие портов${RESET}\n\n"
+    show_section "Открытие портов"
     open_ports
     exit 0
 elif [ "$1" = "closeports" ]; then
     show_header
-    printf "${BLUE}${BOLD}Закрытие портов${RESET}\n\n"
+    show_section "Закрытие портов"
     close_opened_ports
     exit 0
 elif [ "$1" = "update" ]; then
@@ -780,54 +938,58 @@ while true; do
     case $choice in
         1)
             show_header
-            $SCRIPT_DIR/xkeen_rotate.sh --status
-            echo ""
+            show_section "Статус серверов"
+            show_log "$($SCRIPT_DIR/xkeen_rotate.sh --status)"
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         2)
             show_header
-            printf "${BLUE}Автоматическая ротация серверов...${RESET}\n\n"
+            show_section "Автоматическая ротация"
             $SCRIPT_DIR/xkeen_rotate.sh --force --verbose
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         3)
             forced_menu
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         4)
             favorite_menu
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         5)
             show_header
+            show_section "Тестовое уведомление"
             $SCRIPT_DIR/xkeen_rotate.sh --test-notify
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         6)
             show_header
+            show_section "Синхронизация подписки"
             SAVED_URL=$(get_subscription_url)
             if [ -n "$SAVED_URL" ]; then
-                printf "${BLUE}Синхронизация подписки...${RESET}\n\n"
+                show_log "Синхронизация..."
                 $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$SAVED_URL"
             else
                 printf "${RED}URL подписки не настроен!${RESET}\n"
                 printf "Используйте пункт 7 для настройки ссылки подписки.\n"
             fi
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         7)
             show_header
+            show_section "Смена ссылки подписки"
             CURRENT_URL=$(get_subscription_url)
             if [ -n "$CURRENT_URL" ]; then
                 printf "${GRAY}Текущая ссылка: ${CURRENT_URL}${RESET}\n\n"
@@ -837,7 +999,7 @@ while true; do
             if [ -n "$url" ]; then
                 save_subscription_url "$url"
                 printf "${GREEN}URL подписки сохранён!${RESET}\n"
-                echo ""
+                printf "${ORANGE}${LINE}${RESET}\n"
                 printf "${BLUE}Выполнить синхронизацию сейчас? (y/n): ${RESET}"
                 read -r dosync
                 if [ "$dosync" = "y" ] || [ "$dosync" = "Y" ]; then
@@ -846,73 +1008,67 @@ while true; do
             else
                 printf "${YELLOW}URL не введён, настройка отменена.${RESET}\n"
             fi
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         8)
             show_header
-            printf "${BLUE}Очистка лишних файлов...${RESET}\n\n"
+            show_section "Очистка файлов"
             $SCRIPT_DIR/xkeen_rotate.sh --cleanup
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         9)
             show_header
             force_check_updates
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         10)
             show_header
-            printf "${BLUE}${BOLD}Открытие портов${RESET}\n\n"
+            show_section "Открытие портов"
             open_ports
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         11)
             show_header
-            printf "${BLUE}${BOLD}Закрытие портов${RESET}\n\n"
+            show_section "Закрытие портов"
             close_opened_ports
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         12)
             show_header
-            printf "${BLUE}${BOLD}Перезапуск xkeen${RESET}\n\n"
+            show_section "Перезапуск xkeen"
             printf "${YELLOW}Выполнить перезапуск xkeen? (y/n): ${RESET}"
             read -r confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                printf "\n${BLUE}Перезапуск xkeen...${RESET}\n\n"
-                RESTART_OUTPUT=$(xkeen -restart 2>&1)
-                echo "$RESTART_OUTPUT"
-                echo ""
-                if echo "$RESTART_OUTPUT" | grep -q "Прокси-клиент запущен"; then
-                    printf "${GREEN}✓ xkeen успешно перезапущен${RESET}\n"
-                else
-                    printf "${YELLOW}Перезапуск выполнен${RESET}\n"
-                fi
+                show_log "Перезапуск xkeen..."
+                run_xkeen_restart_with_timeout
+                printf "${GREEN}✓ xkeen перезапущен${RESET}\n"
             else
                 printf "${GRAY}Отменено.${RESET}\n"
             fi
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
         13)
             show_header
+            show_section "О системе"
             LOCAL_VERSION=$(get_local_version)
-            printf "${BLUE}${BOLD}Система автоматической ротации прокси-серверов${RESET}\n"
-            printf "${GRAY}Версия: ${LOCAL_VERSION}${RESET}\n\n"
+            printf "Версия: ${GRAY}${LOCAL_VERSION}${RESET}\n\n"
             printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n\n"
             printf "${GREEN}Покупка:${RESET} https://t.me/prstabot\n"
             printf "${GREEN}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
             printf "${GREEN}GitHub:${RESET} https://github.com/andrchq/xkeen_auto\n"
-            echo ""
+            printf "${ORANGE}${LINE}${RESET}\n"
             printf "${BLUE}Нажмите Enter для возврата в меню...${RESET}"
             read -r dummy
             ;;
@@ -923,8 +1079,8 @@ while true; do
             ;;
         *)
             show_header
-            printf "${YELLOW}Неверный выбор. Попробуйте снова.${RESET}\n"
-            sleep 2
+            printf "${YELLOW}Неверный выбор.${RESET}\n"
+            show_countdown 2
             ;;
     esac
 done
@@ -952,17 +1108,15 @@ EOFPROSTO
 check_and_install_whiptail
 
 show_header
-printf "${BLUE}${BOLD}xkeen_rotate - Установка${RESET}\n"
-printf "${BLUE}Автоматическая ротация прокси-серверов для Xray/Xkeen${RESET}\n"
-echo ""
+show_section "Установка системы"
+printf "Автоматическая ротация прокси-серверов для Xray/Xkeen\n\n"
 printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n"
 printf "Для клиентов ${BLUE}https://t.me/prstabot${RESET}\n"
-echo ""
-printf "${GREEN}💬 Служба поддержки:${RESET} https://t.me/prsta_helpbot\n"
-echo ""
+printf "${GREEN}💬 Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+printf "${ORANGE}${LINE}${RESET}\n\n"
 
 log "Начинаю установку..."
-sleep 2
+countdown 2
 
 if [ "$(id -u)" -ne 0 ]; then
     error "Скрипт должен запускаться от root!"
@@ -1215,8 +1369,8 @@ if [ -n "$SUBSCRIPTION_URL" ]; then
             ./xkeen_rotate.sh --force --verbose || ACTIVATE_RESULT=$?
             
             if [ $ACTIVATE_RESULT -eq 0 ]; then
-                log "✓ Сервер активирован"
-                SERVER_ACTIVATED=1
+            log "✓ Сервер активирован"
+            SERVER_ACTIVATED=1
                 
                 # Отправляем уведомление о первой активации
                 ACTIVATED_CC=""
@@ -1523,43 +1677,37 @@ else
 fi
 
 if [ "$USE_DIALOG" -eq 1 ]; then
-    $DIALOG_CMD --title "простовпн" --msgbox "╔════════════════════════════════════════════════════════════╗
-║              Установка успешно завершена!                  ║
-╚════════════════════════════════════════════════════════════╝
+    $DIALOG_CMD --title "простовпн" --msgbox "Установка успешно завершена!
 
 Основные команды:
-• prosto                   # Интерактивное меню
-• prosto status            # Показать статус серверов
-• prosto force             # Принудительная ротация
-• prosto test              # Тест Telegram уведомлений
-• prosto logs              # Просмотр логов
+• prosto                   - Интерактивное меню
+• prosto status            - Показать статус серверов
+• prosto force             - Принудительная ротация
+• prosto test              - Тест Telegram уведомлений
+• prosto update            - Проверить обновления
 
 Система автоматической ротации активна!
 
-════════════════════════════════════════════════════════════
 Покупка: https://t.me/prstabot
-Поддержка: https://t.me/prsta_helpbot
-════════════════════════════════════════════════════════════" 25 70
+Поддержка: https://t.me/prsta_helpbot" 20 60
 else
     show_header
     show_section "Установка завершена!"
     log "✓ Установка успешно завершена!"
-    echo ""
-    printf "${BLUE}${BOLD}Основные команды:${RESET}\n"
-    printf "${BLUE}  prosto${RESET}                   # Интерактивное меню\n"
-    printf "${BLUE}  prosto status${RESET}            # Показать статус серверов\n"
-    printf "${BLUE}  prosto force${RESET}             # Принудительная ротация\n"
-    printf "${BLUE}  prosto test${RESET}              # Тест Telegram уведомлений\n"
-    printf "${BLUE}  prosto logs${RESET}              # Просмотр логов\n"
-    printf "${BLUE}  prosto cleanup${RESET}           # Очистка технических серверов\n"
-    echo ""
+    
+    printf "\n${CYAN}Основные команды:${RESET}\n"
+    printf "  ${BLUE}prosto${RESET}                   - Интерактивное меню\n"
+    printf "  ${BLUE}prosto status${RESET}            - Показать статус серверов\n"
+    printf "  ${BLUE}prosto force${RESET}             - Принудительная ротация\n"
+    printf "  ${BLUE}prosto test${RESET}              - Тест Telegram уведомлений\n"
+    printf "  ${BLUE}prosto update${RESET}            - Проверить обновления\n"
+    
+    printf "\n${ORANGE}${LINE}${RESET}\n\n"
     printf "${GREEN}Система автоматической ротации активна!${RESET}\n"
-    echo ""
-    printf "${GRAY}════════════════════════════════════════════════════════════${RESET}\n"
+    printf "\n${ORANGE}${LINE}${RESET}\n"
     printf "${BLUE}Покупка:${RESET} https://t.me/prstabot\n"
     printf "${BLUE}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
-    printf "${GRAY}════════════════════════════════════════════════════════════${RESET}\n"
-    echo ""
+    printf "${ORANGE}${LINE}${RESET}\n\n"
 fi
 
 if dialog_yesno "Удаление установщика" "Удалить установочный скрипт?"; then
@@ -1573,8 +1721,7 @@ if dialog_yesno "Удаление установщика" "Удалить уст
 fi
 
 show_header
-printf "${GREEN}${BOLD}Готово! Система автоматической ротации активна.${RESET}\n"
-echo ""
-printf "${BLUE}${BOLD}Используйте команду: prosto${RESET}\n"
-printf "${GRAY}(Если команда не найдена, выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
-echo ""
+printf "${GREEN}${BOLD}✓ Готово!${RESET}\n"
+printf "${ORANGE}${LINE}${RESET}\n\n"
+printf "Используйте команду: ${BLUE}${BOLD}prosto${RESET}\n"
+printf "${GRAY}(Если команда не найдена: export PATH=\"/opt/bin:\$PATH\")${RESET}\n\n"

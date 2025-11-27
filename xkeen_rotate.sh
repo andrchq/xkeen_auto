@@ -324,7 +324,7 @@ is_technical_server() {
     
     # Если название похоже на страну/город - это НЕ технический сервер
     if echo "$CC" | grep -qiE "^($VALID_COUNTRIES)"; then
-        return 1
+    return 1
     fi
     
     # По умолчанию считаем техническим если не в списке стран
@@ -533,7 +533,7 @@ show_status() {
         printf "Активная: $CURRENT_CC - "
         if health_tcp "$CUR_TGT"; then
             if [ "$CUR_PING" = "9999" ]; then
-                echo "✓ ДОСТУПНА"
+            echo "✓ ДОСТУПНА"
             else
                 echo "✓ ДОСТУПНА [${CUR_PING}ms]"
             fi
@@ -596,7 +596,7 @@ show_status() {
                 echo "  $cc${MARKS} - ✓ доступна${FAIL_INFO}"
             elif [ "$ping" -gt "$MAX_PING_MS" ] && [ "$cc" != "$FAVORITE" ]; then
                 echo "  $cc${MARKS} - ✓ доступна [${ping}ms] (исключена, ping>${MAX_PING_MS})${FAIL_INFO}"
-            else
+        else
                 echo "  $cc${MARKS} - ✓ доступна [${ping}ms]${FAIL_INFO}"
             fi
         else
@@ -819,7 +819,7 @@ echo "$SORTED_CANDIDATES" | while read -r SORT_KEY CC NEW_TGT cand REAL_PING; do
     fi
 
     CAND_TARGET="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
-    
+
     # Используем реальный ping для отображения
     PING_MS="${REAL_PING:-$SORT_KEY}"
 
@@ -856,10 +856,10 @@ echo "$SORTED_CANDIDATES" | while read -r SORT_KEY CC NEW_TGT cand REAL_PING; do
         echo ""
     fi
 
-    mv -f "$ACTIVE_FILE" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.json" 2>/dev/null
-    mv -f "$ACTIVE_TARGET" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.target" 2>/dev/null
-    mv -f "$cand" "$ACTIVE_FILE" 2>/dev/null
-    mv -f "$CAND_TARGET" "$ACTIVE_TARGET" 2>/dev/null
+        mv -f "$ACTIVE_FILE" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.json" 2>/dev/null
+        mv -f "$ACTIVE_TARGET" "${AVAILABLE_DIR}/04_outbounds_${CURRENT_CC}.target" 2>/dev/null
+        mv -f "$cand" "$ACTIVE_FILE" 2>/dev/null
+        mv -f "$CAND_TARGET" "$ACTIVE_TARGET" 2>/dev/null
 
     log "Активируем $CC и перезапускаем xkeen..."
     restart_xkeen
