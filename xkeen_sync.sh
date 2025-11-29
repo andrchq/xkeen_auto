@@ -46,10 +46,12 @@ parse_vless() {
     FP=$(echo "$PARAMS" | grep -o 'fp=[^&]*' | cut -d= -f2)
     PBK=$(echo "$PARAMS" | grep -o 'pbk=[^&]*' | cut -d= -f2)
     SID=$(echo "$PARAMS" | grep -o 'sid=[^&]*' | cut -d= -f2)
+    SPIDERX=$(echo "$PARAMS" | grep -o 'spx=[^&]*' | cut -d= -f2 | sed 's/%2F/\//g')
+    [ -z "$SPIDERX" ] && SPIDERX="/"
     if [ -z "$COUNTRY_CODE" ]; then
         COUNTRY_CODE=$(echo "$NAME" | tr -d ' |🇱🇹🇰🇿🇩🇪🇺🇸🦅⚡💪🏼' | head -c 5 | tr '[:lower:]' '[:upper:]')
     fi
-    generate_outbound_vless "$COUNTRY_CODE" "$UUID" "$HOST" "$PORT" "$SECURITY" "$FLOW" "$SNI" "$FP" "$PBK" "$SID"
+    generate_outbound_vless "$COUNTRY_CODE" "$UUID" "$HOST" "$PORT" "$SECURITY" "$FLOW" "$SNI" "$FP" "$PBK" "$SID" "$SPIDERX"
 }
 
 generate_outbound_vless() {
@@ -62,53 +64,64 @@ generate_outbound_vless() {
     SNI="$7"
     FP="$8"
     PBK="$9"
-    shift; SID="$9"
+    shift 9
+    SID="$1"
+    SPIDERX="$2"
+    
+    # По умолчанию spiderX = /
+    [ -z "$SPIDERX" ] && SPIDERX="/"
+    
     OUT_FILE="${AVAILABLE_DIR}/04_outbounds_${CC}.json"
     TARGET_FILE="${AVAILABLE_DIR}/04_outbounds_${CC}.target"
     log "Создаём конфигурацию для $CC ($HOST:$PORT)..."
     cat > "$OUT_FILE" << EOF
 {
-  "outbounds": [
-    {
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$HOST",
-            "port": $PORT,
-            "users": [
-              {
-                "id": "$UUID",
-                "encryption": "none",
-                "flow": "$FLOW"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "$SECURITY",
-        "realitySettings": {
-          "show": false,
-          "fingerprint": "$FP",
-          "serverName": "$SNI",
-          "publicKey": "$PBK",
-          "shortId": "$SID",
-          "spiderX": ""
+    "outbounds": [
+        {
+            "tag": "vless-reality",
+            "protocol": "vless",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": "$HOST",
+                        "port": $PORT,
+                        "users": [
+                            {
+                                "id": "$UUID",
+                                "flow": "$FLOW",
+                                "encryption": "none",
+                                "level": 0
+                            }
+                        ]
+                    }
+                ]
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "$SECURITY",
+                "realitySettings": {
+                    "publicKey": "$PBK",
+                    "fingerprint": "$FP",
+                    "serverName": "$SNI",
+                    "shortId": "$SID",
+                    "spiderX": "$SPIDERX"
+                }
+            }
+        },
+        {
+            "tag": "direct",
+            "protocol": "freedom"
+        },
+        {
+            "tag": "block",
+            "protocol": "blackhole",
+            "settings": {
+                "response": {
+                    "type": "http"
+                }
+            }
         }
-      },
-      "tag": "proxy"
-    },
-    {
-      "protocol": "freedom",
-      "tag": "direct"
-    },
-    {
-      "protocol": "blackhole",
-      "tag": "block"
-    }
-  ]
+    ]
 }
 EOF
     echo "$HOST:$PORT" > "$TARGET_FILE"
