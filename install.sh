@@ -18,7 +18,7 @@ TIMER_SCRIPTS_LOADED=5           # После загрузки скриптов
 TIMER_INIT_SCRIPTS=5             # После установки init-скриптов
 TIMER_PERMISSIONS=2              # После установки прав доступа
 TIMER_PROSTO_COMMAND=7           # После установки команды prosto
-TIMER_XRAY_CONFIGS=6             # После установки конфигов Xray
+TIMER_XRAY_CONFIGS=14             # После установки конфигов Xray
 TIMER_TELEGRAM_TEST=2            # После тестового уведомления Telegram
 TIMER_SUBSCRIPTION_LOAD=6        # После загрузки подписки
 TIMER_SERVERS_LIST=7             # После показа списка серверов
@@ -1344,7 +1344,8 @@ done
 echo "$SUBSCRIPTION_URL" > "$SUBSCRIPTION_FILE"
 log "URL подписки сохранён в $SUBSCRIPTION_FILE"
 
-show_section "Загрузка серверов из подписки"
+    show_header
+    show_section "Загрузка серверов из подписки"
 printf "Собираем свежую информацию о серверах. Это нужно, чтобы всегда\n"
 printf "подключаться к стабильным и быстрым точкам.\n\n"
 log "Загружаю серверы из подписки..."
@@ -1354,6 +1355,7 @@ if sh ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
     log "✓ Серверы загружены"
     pause_for_reading "$TIMER_SUBSCRIPTION_LOAD"
     
+    show_header
     show_section "Доступные серверы"
     printf "Вот что удалось найти. Вы в любой момент сможете выбрать\n"
     printf "любую страну вручную из списка в команде prosto.\n\n"
@@ -1413,6 +1415,7 @@ if sh ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
     fi
     
     if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
+        show_header
         show_section "Перезапуск Xray"
         printf "${BLUE}Все конфигурации установлены. Перезапускаю Xray...${RESET}\n"
         echo ""
