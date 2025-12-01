@@ -7,12 +7,35 @@ STATE_FILE="/tmp/xkeen_current_country"             # текущее состо�
 SUBSCRIPTION_FILE="/opt/root/scripts/.subscription_url"  # файл с сохранённым URL
 ACTIVE_FILE="/opt/etc/xray/configs/04_outbounds.json"    # активная конфигурация
 ACTIVE_TARGET="/opt/etc/xray/configs/04_outbounds.target" # активный target
+LOG_STDOUT=0                                        # выводить ли технические логи в stdout
 # ---------- Конец настроек ----------
 
-log() { 
-    echo "[xkeen_sync] $*"
+log() {
+    [ "$LOG_STDOUT" -eq 1 ] && echo "[xkeen_sync] $*"
     logger -t xkeen_sync "$*"
 }
+
+# ---------- Аргументы ----------
+SYNC_URL_ARG=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --verbose)
+            LOG_STDOUT=1
+            shift
+            ;;
+        *)
+            if [ -z "$SYNC_URL_ARG" ]; then
+                SYNC_URL_ARG="$1"
+                shift
+            else
+                echo "Ошибка: указано слишком много аргументов."
+                echo "Использование: $0 [--verbose] [URL_подписки]"
+                exit 1
+            fi
+            ;;
+    esac
+done
+# ---------- Конец аргументов ----------
 
 parse_vless() {
     VLESS_URL="$1"
@@ -229,6 +252,7 @@ sync_subscription() {
     done
     FINAL_COUNT=$(ls "${AVAILABLE_DIR}"/04_outbounds_*.json 2>/dev/null | wc -l)
     log "Синхронизация завершена. Создано конфигураций: $FINAL_COUNT"
+    COUNTRY_LIST=""
     if [ "$FINAL_COUNT" -gt 0 ]; then
         log "Доступные страны:"
         for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
@@ -236,16 +260,30 @@ sync_subscription() {
             CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
             TARGET=$(cat "${AVAILABLE_DIR}/04_outbounds_${CC}.target" 2>/dev/null)
             log "  - $CC ($TARGET)"
+            COUNTRY_LIST="${COUNTRY_LIST}${CC}\n"
         done
     else
         log "Внимание: не создано ни одной конфигурации! Проверьте подписку."
     fi
+
+    echo ""
+    echo "Синхронизация завершена."
+    if [ -n "$COUNTRY_LIST" ]; then
+        echo ""
+        echo "Найдено стран для подключения:"
+        printf "%s" "$COUNTRY_LIST" | while IFS= read -r COUNTRY_NAME; do
+            [ -z "$COUNTRY_NAME" ] && continue
+            printf -- "- %s\n" "$COUNTRY_NAME"
+        done
+    else
+        echo ""
+        echo "Страны не обнаружены. Проверьте подписку."
+    fi
 }
 
 # Определяем URL подписки
-if [ -n "$1" ]; then
-    # URL передан как аргумент
-    SYNC_URL="$1"
+if [ -n "$SYNC_URL_ARG" ]; then
+    SYNC_URL="$SYNC_URL_ARG"
 elif [ -f "$SUBSCRIPTION_FILE" ]; then
     # Читаем из сохранённого файла
     SYNC_URL=$(cat "$SUBSCRIPTION_FILE" 2>/dev/null | tr -d '\n\r')
@@ -258,8 +296,8 @@ if [ -z "$SYNC_URL" ]; then
     echo "Скрипт синхронизации подписок xkeen"
     echo ""
     echo "Использование:"
-    echo "  $0 <URL_подписки>    - синхронизация с указанным URL"
-    echo "  $0                   - синхронизация с сохранённым URL"
+    echo "  $0 [--verbose] <URL_подписки>    - синхронизация с указанным URL"
+    echo "  $0 [--verbose]                   - синхронизация с сохранённым URL"
     echo ""
     echo "URL подписки можно сохранить через команду: prosto seturl <URL>"
     echo ""
