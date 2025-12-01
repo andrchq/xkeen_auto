@@ -1301,7 +1301,7 @@ printf "%s\n\n" "${ORANGE}${LINE}${RESET}"
 show_section "Отправка тестового уведомления"
 log "Отправляю тестовое уведомление..."
 cd "$INSTALL_DIR"
-if ./xkeen_rotate.sh --test-notify; then
+if sh ./xkeen_rotate.sh --test-notify; then
     printf "${GREEN}✓ Тестовое уведомление отправлено успешно${RESET}\n"
 else
     printf "${RED}✗ Ошибка отправки тестового уведомления${RESET}\n"
@@ -1331,52 +1331,65 @@ show_section "Загрузка серверов из подписки"
 log "Загружаю серверы из подписки..."
 
 cd "$INSTALL_DIR"
-if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
+if sh ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
     log "✓ Серверы загружены"
     countdown "$TIMER_SUBSCRIPTION_LOAD"
     
     show_section "Доступные серверы"
-    ./xkeen_rotate.sh --status
+    sh ./xkeen_rotate.sh --status
     
     countdown "$TIMER_SERVERS_LIST"
     
-    # 6. Обязательная активация сервера с лучшим ping
-    show_section "Активация сервера"
-    log "Выбираю сервер с наименьшим ping..."
-    printf "${BLUE}Измерение ping до всех серверов...${RESET}\n"
-    echo ""
-    ACTIVATE_RESULT=0
-    ./xkeen_rotate.sh --force --verbose || ACTIVATE_RESULT=$?
+    ACTIVATE_CHOICE=""
+    while true; do
+        ACTIVATE_CHOICE=$(read_from_tty "${BLUE}Активировать лучший сервер сейчас? (1 — да, 2 — нет): ${RESET}")
+        case "$ACTIVATE_CHOICE" in
+            1) DO_ACTIVATE=1; break ;;
+            2) DO_ACTIVATE=0; break ;;
+            *) printf "%s\n" "${YELLOW}Введите 1 или 2.${RESET}" ;;
+        esac
+    done
     
-    if [ $ACTIVATE_RESULT -eq 0 ]; then
-        log "✓ Сервер активирован"
-        SERVER_ACTIVATED=1
+    if [ "${DO_ACTIVATE:-1}" -eq 1 ]; then
+        show_section "Активация сервера"
+        log "Выбираю сервер с наименьшим ping..."
+        printf "${BLUE}Измерение ping до всех серверов...${RESET}\n"
+        echo ""
+        ACTIVATE_RESULT=0
+        sh ./xkeen_rotate.sh --force --verbose || ACTIVATE_RESULT=$?
         
-        # Отправляем уведомление о первой активации
-        ACTIVATED_CC=""
-        ACTIVATED_TGT=""
-        [ -f "/tmp/xkeen_current_country" ] && ACTIVATED_CC=$(cat "/tmp/xkeen_current_country" 2>/dev/null)
-        [ -f "$CONFIG_DIR/configs/04_outbounds.target" ] && ACTIVATED_TGT=$(head -n1 "$CONFIG_DIR/configs/04_outbounds.target" 2>/dev/null | tr -d '\r\n')
-        
-        if [ -n "$TG_TOPIC_ID" ] && [ -n "$ACTIVATED_CC" ]; then
-            TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-            NOTIFY_MSG="🟩 <b>ПЕРВИЧНАЯ НАСТРОЙКА ЗАВЕРШЕНА</b>
+        if [ $ACTIVATE_RESULT -eq 0 ]; then
+            log "✓ Сервер активирован"
+            SERVER_ACTIVATED=1
+            
+            # Отправляем уведомление о первой активации
+            ACTIVATED_CC=""
+            ACTIVATED_TGT=""
+            [ -f "/tmp/xkeen_current_country" ] && ACTIVATED_CC=$(cat "/tmp/xkeen_current_country" 2>/dev/null)
+            [ -f "$CONFIG_DIR/configs/04_outbounds.target" ] && ACTIVATED_TGT=$(head -n1 "$CONFIG_DIR/configs/04_outbounds.target" 2>/dev/null | tr -d '\r\n')
+            
+            if [ -n "$TG_TOPIC_ID" ] && [ -n "$ACTIVATED_CC" ]; then
+                TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+                NOTIFY_MSG="🟩 <b>ПЕРВИЧНАЯ НАСТРОЙКА ЗАВЕРШЕНА</b>
 
 <b>Система успешно настроена!</b>
 Активирован сервер: $ACTIVATED_CC ($ACTIVATED_TGT)
 
 ⏰ $TIMESTAMP"
-            curl -s -X POST "https://api.telegram.org/bot7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U/sendMessage" \
-                -d "chat_id=-1002517339071" \
-                -d "message_thread_id=$TG_TOPIC_ID" \
-                -d "text=$NOTIFY_MSG" \
-                -d "parse_mode=HTML" >/dev/null 2>&1
-            log "Уведомление о первой активации отправлено"
+                curl -s -X POST "https://api.telegram.org/bot7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U/sendMessage" \
+                    -d "chat_id=-1002517339071" \
+                    -d "message_thread_id=$TG_TOPIC_ID" \
+                    -d "text=$NOTIFY_MSG" \
+                    -d "parse_mode=HTML" >/dev/null 2>&1
+                log "Уведомление о первой активации отправлено"
+            fi
+        else
+            log "⚠ Не удалось активировать сервер"
         fi
+        countdown "$TIMER_SERVER_ACTIVATE"
     else
-        log "⚠ Не удалось активировать сервер"
+        log "Пользователь пропустил активацию сервера"
     fi
-    countdown "$TIMER_SERVER_ACTIVATE"
     
     if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
         show_section "Перезапуск Xray"
