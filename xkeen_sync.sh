@@ -271,7 +271,7 @@ sync_subscription() {
     if [ -n "$COUNTRY_LIST" ]; then
         echo ""
         echo "Найдено стран для подключения:"
-        printf "%s" "$COUNTRY_LIST" | while IFS= read -r COUNTRY_NAME; do
+        printf "%b" "$COUNTRY_LIST" | while IFS= read -r COUNTRY_NAME; do
             [ -z "$COUNTRY_NAME" ] && continue
             printf -- "- %s\n" "$COUNTRY_NAME"
         done
