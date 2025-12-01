@@ -28,15 +28,16 @@ TIMER_CRON_SETUP=2               # После настройки cron
 TIMER_MONITORING_SETUP=2         # После настройки мониторинга
 TIMER_PORTS_OPEN=2               # После открытия портов
 # ====================================================
-GRAY="\033[90m"
-BLUE="\033[94m"
-GREEN="\033[92m"
-YELLOW="\033[93m"
-RED="\033[91m"
-RESET="\033[0m"
-BOLD="\033[1m"
-ORANGE="\033[38;5;214m"
-CYAN="\033[96m"
+ESC=$(printf '\033')
+GRAY="${ESC}[90m"
+BLUE="${ESC}[94m"
+GREEN="${ESC}[92m"
+YELLOW="${ESC}[93m"
+RED="${ESC}[91m"
+RESET="${ESC}[0m"
+BOLD="${ESC}[1m"
+ORANGE="${ESC}[38;5;214m"
+CYAN="${ESC}[96m"
 
 LINE="─────────────────────────────────────────────────"
 
