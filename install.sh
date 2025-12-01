@@ -8,6 +8,26 @@ GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
 CONFIGS_INSTALLED=0
 SERVER_ACTIVATED=0
 
+# ============ Настройка таймеров этапов ============
+# Время ожидания (в секундах) перед переходом к следующему этапу
+# Можно изменить значения для каждого этапа отдельно
+# Для отключения таймера установите значение 0
+# Для увеличения времени ожидания увеличьте значение (в секундах)
+TIMER_START=7                    # Начало установки
+TIMER_SCRIPTS_LOADED=5           # После загрузки скриптов
+TIMER_INIT_SCRIPTS=5             # После установки init-скриптов
+TIMER_PERMISSIONS=2              # После установки прав доступа
+TIMER_PROSTO_COMMAND=7           # После установки команды prosto
+TIMER_XRAY_CONFIGS=6             # После установки конфигов Xray
+TIMER_TELEGRAM_TEST=2            # После тестового уведомления Telegram
+TIMER_SUBSCRIPTION_LOAD=6        # После загрузки подписки
+TIMER_SERVERS_LIST=7             # После показа списка серверов
+TIMER_SERVER_ACTIVATE=5          # После активации сервера
+TIMER_XRAY_RESTART=4             # После перезапуска Xray
+TIMER_CRON_SETUP=2               # После настройки cron
+TIMER_MONITORING_SETUP=2         # После настройки мониторинга
+TIMER_PORTS_OPEN=2               # После открытия портов
+# ====================================================
 GRAY="\033[90m"
 BLUE="\033[94m"
 GREEN="\033[92m"
@@ -59,9 +79,43 @@ error() {
 
 read_input() {
     PROMPT="$1"
-    printf "${BLUE}${PROMPT}${RESET}"
+    printf "${BLUE}%s${RESET}" "$PROMPT"
     read -r result
     echo "$result"
+}
+
+# Безопасное создание файла с бэкапом
+safe_create_file() {
+    FILE_PATH="$1"
+    CONTENT="$2"
+    
+    # Если файл существует, создаём бэкап
+    if [ -f "$FILE_PATH" ]; then
+        BACKUP_PATH="${FILE_PATH}.bak.$(date +%s)"
+        cp "$FILE_PATH" "$BACKUP_PATH" 2>/dev/null && log "Создан backup: $(basename "$BACKUP_PATH")"
+    fi
+    
+    # Создаём/заменяем файл
+    echo "$CONTENT" > "$FILE_PATH"
+}
+
+# Безопасная загрузка файла с бэкапом
+safe_download_file() {
+    URL="$1"
+    FILE_PATH="$2"
+    
+    # Если файл существует, создаём бэкап
+    if [ -f "$FILE_PATH" ]; then
+        BACKUP_PATH="${FILE_PATH}.bak.$(date +%s)"
+        cp "$FILE_PATH" "$BACKUP_PATH" 2>/dev/null && log "Создан backup: $(basename "$BACKUP_PATH")"
+    fi
+    
+    # Загружаем файл
+    if curl -sSL "$URL" -o "$FILE_PATH"; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 create_prosto_command() {
@@ -1011,7 +1065,7 @@ printf "${GREEN}💬 Поддержка:${RESET} https://t.me/prsta_helpbot\n"
 printf "${ORANGE}${LINE}${RESET}\n\n"
 
 log "Начинаю установку..."
-countdown 2
+countdown "$TIMER_START"
 
 if [ "$(id -u)" -ne 0 ]; then
     error "Скрипт должен запускаться от root!"
@@ -1068,35 +1122,39 @@ sleep 1
 show_header
 show_section "Загрузка скриптов с GitHub"
 
-if ! curl -sSL "$GITHUB_RAW/xkeen_rotate.sh" -o "$INSTALL_DIR/xkeen_rotate.sh"; then
+if ! safe_download_file "$GITHUB_RAW/xkeen_rotate.sh" "$INSTALL_DIR/xkeen_rotate.sh"; then
     error "Не удалось скачать xkeen_rotate.sh"
 fi
 
-if ! curl -sSL "$GITHUB_RAW/xkeen_sync.sh" -o "$INSTALL_DIR/xkeen_sync.sh"; then
+if ! safe_download_file "$GITHUB_RAW/xkeen_sync.sh" "$INSTALL_DIR/xkeen_sync.sh"; then
     error "Не удалось скачать xkeen_sync.sh"
 fi
 
-if ! curl -sSL "$GITHUB_RAW/network_watchdog.sh" -o "$INSTALL_DIR/network_watchdog.sh"; then
+if ! safe_download_file "$GITHUB_RAW/network_watchdog.sh" "$INSTALL_DIR/network_watchdog.sh"; then
     error "Не удалось скачать network_watchdog.sh"
 fi
 
-if ! curl -sSL "$GITHUB_RAW/startup_notify.sh" -o "$INSTALL_DIR/startup_notify.sh"; then
+if ! safe_download_file "$GITHUB_RAW/startup_notify.sh" "$INSTALL_DIR/startup_notify.sh"; then
     error "Не удалось скачать startup_notify.sh"
 fi
 
-if ! curl -sSL "$GITHUB_RAW/xkeen_restart.sh" -o "$INSTALL_DIR/xkeen_restart.sh"; then
+if ! safe_download_file "$GITHUB_RAW/xkeen_restart.sh" "$INSTALL_DIR/xkeen_restart.sh"; then
     error "Не удалось скачать xkeen_restart.sh"
 fi
 
 # Скачиваем файл версии
-if curl -sSL "$GITHUB_RAW/VERSION" -o "$INSTALL_DIR/.version" 2>/dev/null; then
+if safe_download_file "$GITHUB_RAW/VERSION" "$INSTALL_DIR/.version"; then
     log "✓ Версия: $(cat $INSTALL_DIR/.version)"
 else
+    if [ -f "$INSTALL_DIR/.version" ]; then
+        BACKUP_PATH="${INSTALL_DIR}/.version.bak.$(date +%s)"
+        cp "$INSTALL_DIR/.version" "$BACKUP_PATH" 2>/dev/null
+    fi
     echo "1.0.0" > "$INSTALL_DIR/.version"
 fi
 
 log "✓ Основные скрипты загружены"
-countdown 2
+countdown "$TIMER_SCRIPTS_LOADED"
 
 show_header
 show_section "Загрузка init-скриптов"
@@ -1104,18 +1162,18 @@ show_section "Загрузка init-скриптов"
 INIT_DIR="/opt/etc/init.d"
 mkdir -p "$INIT_DIR"
 
-if ! curl -sSL "$GITHUB_RAW/S99startup_notify" -o "$INIT_DIR/S99startup_notify"; then
-    log "⚠ Не удалось скачать S99startup_notify (продолжаем)"
-else
+if safe_download_file "$GITHUB_RAW/S99startup_notify" "$INIT_DIR/S99startup_notify"; then
     chmod +x "$INIT_DIR/S99startup_notify"
     log "✓ S99startup_notify установлен"
+else
+    log "⚠ Не удалось скачать S99startup_notify (продолжаем)"
 fi
 
-if ! curl -sSL "$GITHUB_RAW/S99xkeenstart" -o "$INIT_DIR/S99xkeenstart"; then
-    log "⚠ Не удалось скачать S99xkeenstart (продолжаем)"
-else
+if safe_download_file "$GITHUB_RAW/S99xkeenstart" "$INIT_DIR/S99xkeenstart"; then
     chmod +x "$INIT_DIR/S99xkeenstart"
     log "✓ S99xkeenstart установлен"
+else
+    log "⚠ Не удалось скачать S99xkeenstart (продолжаем)"
 fi
 
 # Удаляем старые init-скрипты если существуют
@@ -1123,7 +1181,7 @@ fi
 [ -f "$INIT_DIR/S99xkeenrestart" ] && rm -f "$INIT_DIR/S99xkeenrestart"
 
 log "✓ Init-скрипты установлены"
-countdown 3
+countdown "$TIMER_INIT_SCRIPTS"
 
 show_header
 show_section "Установка прав доступа"
@@ -1135,7 +1193,7 @@ chmod +x "$INSTALL_DIR/startup_notify.sh"
 chmod +x "$INSTALL_DIR/xkeen_restart.sh"
 
 log "✓ Права установлены"
-countdown 3
+countdown "$TIMER_PERMISSIONS"
 
 show_header
 show_section "Установка команды prosto"
@@ -1145,7 +1203,7 @@ create_prosto_command
 log "✓ Команда 'prosto' установлена в /opt/bin"
 printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n"
 printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
-countdown 3
+countdown "$TIMER_PROSTO_COMMAND"
 
 # 1. Установка конфигураций Xray без вопроса
 if command -v xkeen >/dev/null 2>&1; then
@@ -1162,23 +1220,13 @@ if command -v xkeen >/dev/null 2>&1; then
     
     BACKUP_SUFFIX=$(date +%s)
     
-    if [ -f "$CONFIG_DIR/configs/03_inbounds.json" ]; then
-        cp "$CONFIG_DIR/configs/03_inbounds.json" "$CONFIG_DIR/configs/03_inbounds.json.bak.$BACKUP_SUFFIX" 2>/dev/null
-        log "Создан backup: 03_inbounds.json.bak.$BACKUP_SUFFIX"
-    fi
-    
-    if [ -f "$CONFIG_DIR/configs/05_routing.json" ]; then
-        cp "$CONFIG_DIR/configs/05_routing.json" "$CONFIG_DIR/configs/05_routing.json.bak.$BACKUP_SUFFIX" 2>/dev/null
-        log "Создан backup: 05_routing.json.bak.$BACKUP_SUFFIX"
-    fi
-    
-    if curl -sSL "$GITHUB_RAW/03_inbounds.json" -o "$CONFIG_DIR/configs/03_inbounds.json"; then
+    if safe_download_file "$GITHUB_RAW/03_inbounds.json" "$CONFIG_DIR/configs/03_inbounds.json"; then
         log "✓ 03_inbounds.json установлен"
     else
         log "⚠ Не удалось загрузить 03_inbounds.json"
     fi
     
-    if curl -sSL "$GITHUB_RAW/05_routing.json" -o "$CONFIG_DIR/configs/05_routing.json"; then
+    if safe_download_file "$GITHUB_RAW/05_routing.json" "$CONFIG_DIR/configs/05_routing.json"; then
         log "✓ 05_routing.json установлен"
     else
         log "⚠ Не удалось загрузить 05_routing.json"
@@ -1187,7 +1235,7 @@ if command -v xkeen >/dev/null 2>&1; then
     printf "${GREEN}✓ Конфигурации inbound и routing установлены${RESET}\n"
     printf "${GRAY}   Перезапуск Xray будет выполнен после настройки подписки${RESET}\n"
     CONFIGS_INSTALLED=1
-    countdown 3
+    countdown "$TIMER_XRAY_CONFIGS"
 fi
 
 # 2. Обязательная настройка Telegram
@@ -1199,7 +1247,8 @@ printf "${ORANGE}${LINE}${RESET}\n\n"
 
 TG_TOPIC_ID=""
 while [ -z "$TG_TOPIC_ID" ]; do
-    TG_TOPIC_ID=$(read_input "Введите ID топика Telegram: ")
+    printf "${BLUE}Введите ID топика Telegram: ${RESET}"
+    read -r TG_TOPIC_ID
     if [ -z "$TG_TOPIC_ID" ]; then
         printf "${RED}ID топика не может быть пустым!${RESET}\n"
     fi
@@ -1224,7 +1273,7 @@ else
     printf "${YELLOW}Проверьте правильность ID топика${RESET}\n"
 fi
 printf "${ORANGE}${LINE}${RESET}\n"
-countdown 3
+countdown "$TIMER_TELEGRAM_TEST"
 
 # 5. Обязательный ввод URL подписки
 SUBSCRIPTION_FILE="$INSTALL_DIR/.subscription_url"
@@ -1233,7 +1282,8 @@ show_section "Настройка подписки"
 
 SUBSCRIPTION_URL=""
 while [ -z "$SUBSCRIPTION_URL" ]; do
-    SUBSCRIPTION_URL=$(read_input "Введите URL подписки на серверы: ")
+    printf "${BLUE}Введите URL подписки на серверы: ${RESET}"
+    read -r SUBSCRIPTION_URL
     if [ -z "$SUBSCRIPTION_URL" ]; then
         printf "${RED}URL подписки не может быть пустым!${RESET}\n"
     fi
@@ -1249,12 +1299,12 @@ log "Загружаю серверы из подписки..."
 cd "$INSTALL_DIR"
 if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
     log "✓ Серверы загружены"
-    countdown 3
+    countdown "$TIMER_SUBSCRIPTION_LOAD"
     
     show_section "Доступные серверы"
     ./xkeen_rotate.sh --status
     
-    countdown 3
+    countdown "$TIMER_SERVERS_LIST"
     
     # 6. Обязательная активация сервера с лучшим ping
     show_section "Активация сервера"
@@ -1292,7 +1342,7 @@ if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
     else
         log "⚠ Не удалось активировать сервер"
     fi
-    countdown 3
+    countdown "$TIMER_SERVER_ACTIVATE"
     
     if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
         show_section "Перезапуск Xray"
@@ -1319,7 +1369,7 @@ if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
         else
             printf "${YELLOW}⚠ Не удалось получить вывод команды${RESET}\n"
         fi
-        countdown 3
+        countdown "$TIMER_XRAY_RESTART"
     fi
 else
     show_section "Ошибка загрузки подписки"
@@ -1355,7 +1405,7 @@ rm -f "$TEMP_CRON"
 
 log "✓ Автоматическая ротация настроена (интервал: 2 минуты)"
 log "✓ Автозапуск настроен через cron (@reboot)"
-countdown 2
+countdown "$TIMER_CRON_SETUP"
 
 # 10. Система мониторинга - ДА
 show_section "Настройка системы автоматизации"
@@ -1385,7 +1435,7 @@ rm -f "$TEMP_CRON"
 
 log "✓ Мониторинг сети настроен (проверка каждые 5 минут)"
 log "✓ Полная система автоматизации активирована"
-countdown 2
+countdown "$TIMER_MONITORING_SETUP"
 
 # ============ Открытие портов ============
 show_header
@@ -1512,7 +1562,7 @@ if command -v xkeen >/dev/null 2>&1; then
         log "⚠ Не удалось открыть порты после $MAX_ATTEMPTS попыток"
     fi
     
-    countdown 3
+    countdown "$TIMER_PORTS_OPEN"
 else
     log "⚠ xkeen не найден, пропускаю настройку портов"
     sleep 1

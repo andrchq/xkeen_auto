@@ -188,7 +188,19 @@ sync_subscription() {
     log "Загрузка подписки: $SUBSCRIPTION_URL"
     mkdir -p "$AVAILABLE_DIR"
     
-    # Очистка перед синхронизацией
+    # Удаление всех старых файлов синхронизации перед загрузкой новых
+    log "Удаление старых файлов синхронизации..."
+    OLD_FILES_COUNT=0
+    for f in "${AVAILABLE_DIR}"/04_outbounds_*.json; do
+        [ -f "$f" ] || continue
+        CC=$(basename "$f" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
+        rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.json"
+        rm -f "${AVAILABLE_DIR}/04_outbounds_${CC}.target"
+        OLD_FILES_COUNT=$((OLD_FILES_COUNT + 1))
+    done
+    [ "$OLD_FILES_COUNT" -gt 0 ] && log "Удалено старых файлов: $OLD_FILES_COUNT"
+    
+    # Очистка технических серверов (на случай если что-то осталось)
     cleanup_before_sync
     SUBSCRIPTION_DATA=$(curl -sL "$SUBSCRIPTION_URL" | base64 -d 2>/dev/null)
     if [ -z "$SUBSCRIPTION_DATA" ]; then

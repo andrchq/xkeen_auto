@@ -1,9 +1,9 @@
-version:1.2.0
+version:1.2.1
 type:recommended
 prosto:1.1.0
-install.sh:1.2.0
+install.sh:1.2.1
 xkeen_rotate.sh:1.0.5
-xkeen_sync.sh:1.0.3
+xkeen_sync.sh:1.0.4
 network_watchdog.sh:1.0.1
 startup_notify.sh:1.0.0
 xkeen_restart.sh:1.0.0
