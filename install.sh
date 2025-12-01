@@ -1050,12 +1050,26 @@ EOFPROSTO
 }
 
 show_header
-show_section "Установка системы"
-printf "Автоматическая ротация прокси-серверов для Xray/Xkeen\n\n"
-printf "Разработано командой ${BLUE}${BOLD}простовпн${RESET}\n"
-printf "Для клиентов ${BLUE}https://t.me/prstabot${RESET}\n"
+show_section "Приветствуем вас!"
+
+printf "Спасибо за покупку и доверие к сервису ${BLUE}${BOLD}простовпн${RESET}\n\n"
+
+printf "Вы выбрали самый клиентоориентированный сервис:\n"
+printf "— Быстрый запуск без сложности и лишних действий\n"
+printf "— Максимально простая установка и настройка\n"
+printf "— Поддержка, которая всегда рядом\n\n"
+
+printf "Мы — единственный сервис, предлагающий действительно\n"
+printf "простую автоматическую установку VPN на роутерах 🔥\n"
+printf "Никакой магии — только технологии, сделанные для людей.\n\n"
+
+printf "Команда ${BLUE}${BOLD}простовпн${RESET} поздравляет вас с подключением!\n"
+printf "Добро пожаловать в мир защищённого и свободного интернета.\n\n"
+
 printf "${GREEN}💬 Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+printf "${BLUE}🤖 Наш бот:${RESET} https://t.me/prstabot\n"
 printf "${ORANGE}${LINE}${RESET}\n\n"
+
 
 log "Начинаю установку..."
 countdown "$TIMER_START"
@@ -1247,12 +1261,24 @@ while [ -z "$TG_TOPIC_ID" ]; do
     fi
 done
 
-sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_rotate.sh"
-sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/network_watchdog.sh"
-sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/startup_notify.sh"
-sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_restart.sh"
+# Безопасная замена TG_TOPIC_ID в файлах
+set_telegram_id() {
+    _FILE="$1"
+    _TMP="${_FILE}.tmp.$$"
+    if [ -f "$_FILE" ]; then
+        sed "s/TG_TOPIC_ID=\"[^\"]*\"/TG_TOPIC_ID=\"$TG_TOPIC_ID\"/" "$_FILE" > "$_TMP" && mv "$_TMP" "$_FILE"
+        log "✓ Настроен: $(basename "$_FILE")"
+    else
+        log "⚠ Файл не найден: $_FILE"
+    fi
+}
 
-log "✓ Telegram настроен для всех скриптов"
+set_telegram_id "$INSTALL_DIR/xkeen_rotate.sh"
+set_telegram_id "$INSTALL_DIR/network_watchdog.sh"
+set_telegram_id "$INSTALL_DIR/startup_notify.sh"
+set_telegram_id "$INSTALL_DIR/xkeen_restart.sh"
+
+log "✓ Telegram ID настроен во всех скриптах"
 printf "%s\n\n" "${ORANGE}${LINE}${RESET}"
 
 # 4. Автоматическая отправка тестового уведомления
