@@ -78,6 +78,22 @@ error() {
     exit 1
 }
 
+# Безопасное чтение из TTY (работает даже при запуске через pipe)
+read_from_tty() {
+    PROMPT="$1"
+    if [ -t 0 ]; then
+        printf "%s" "$PROMPT"
+        IFS= read -r VALUE
+    elif [ -e /dev/tty ]; then
+        printf "%s" "$PROMPT" > /dev/tty
+        IFS= read -r VALUE < /dev/tty
+    else
+        printf "%s\n" "${RED}Ошибка: интерактивный ввод недоступен (нет /dev/tty).${RESET}"
+        exit 1
+    fi
+    echo "$VALUE"
+}
+
 # Безопасное создание файла с бэкапом
 safe_create_file() {
     FILE_PATH="$1"
@@ -1255,8 +1271,7 @@ printf "%s\n\n" "${ORANGE}${LINE}${RESET}"
 
 TG_TOPIC_ID=""
 while [ -z "$TG_TOPIC_ID" ]; do
-    printf "%s" "${BLUE}Введите ID топика Telegram: ${RESET}"
-    read -r TG_TOPIC_ID
+    TG_TOPIC_ID=$(read_from_tty "${BLUE}Введите ID топика Telegram: ${RESET}")
     if [ -z "$TG_TOPIC_ID" ]; then
         printf "%s\n" "${RED}ID топика не может быть пустым!${RESET}"
     fi
@@ -1302,8 +1317,7 @@ show_section "Настройка подписки"
 
 SUBSCRIPTION_URL=""
 while [ -z "$SUBSCRIPTION_URL" ]; do
-    printf "%s" "${BLUE}Введите URL подписки на серверы: ${RESET}"
-    read -r SUBSCRIPTION_URL
+    SUBSCRIPTION_URL=$(read_from_tty "${BLUE}Введите URL подписки на серверы: ${RESET}")
     if [ -z "$SUBSCRIPTION_URL" ]; then
         printf "%s\n" "${RED}URL подписки не может быть пустым!${RESET}"
     fi
