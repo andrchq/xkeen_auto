@@ -49,9 +49,9 @@ show_header() {
 
 show_section() {
     TITLE="$1"
-    printf "\n${ORANGE}${LINE}${RESET}\n"
-    printf "${BLUE}${BOLD}${TITLE}${RESET}\n"
-    printf "${ORANGE}${LINE}${RESET}\n\n"
+    printf "\n%s\n" "${ORANGE}${LINE}${RESET}"
+    printf "%s\n" "${BLUE}${BOLD}${TITLE}${RESET}"
+    printf "%s\n\n" "${ORANGE}${LINE}${RESET}"
 }
 
 show_log() {
@@ -75,13 +75,6 @@ log() {
 error() {
     printf "${RED}[ОШИБКА] $*${RESET}\n" >&2
     exit 1
-}
-
-read_input() {
-    PROMPT="$1"
-    printf "${BLUE}%s${RESET}" "$PROMPT"
-    read -r result
-    echo "$result"
 }
 
 # Безопасное создание файла с бэкапом
@@ -1241,16 +1234,16 @@ fi
 # 2. Обязательная настройка Telegram
 show_header
 show_section "Настройка Telegram уведомлений"
-printf "${GRAY}Для получения ID топика напишите администратору в @prsta_helpbot${RESET}\n"
-printf "${GRAY}Администратор предоставит вам индивидуальный ID топика для получения уведомлений${RESET}\n"
-printf "${ORANGE}${LINE}${RESET}\n\n"
+printf "%s\n" "${GRAY}Для получения ID топика напишите администратору в @prsta_helpbot${RESET}"
+printf "%s\n" "${GRAY}Администратор предоставит вам индивидуальный ID топика для получения уведомлений${RESET}"
+printf "%s\n\n" "${ORANGE}${LINE}${RESET}"
 
 TG_TOPIC_ID=""
 while [ -z "$TG_TOPIC_ID" ]; do
-    printf "${BLUE}Введите ID топика Telegram: ${RESET}"
+    printf "%s" "${BLUE}Введите ID топика Telegram: ${RESET}"
     read -r TG_TOPIC_ID
     if [ -z "$TG_TOPIC_ID" ]; then
-        printf "${RED}ID топика не может быть пустым!${RESET}\n"
+        printf "%s\n" "${RED}ID топика не может быть пустым!${RESET}"
     fi
 done
 
@@ -1260,7 +1253,7 @@ sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/startu
 sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_restart.sh"
 
 log "✓ Telegram настроен для всех скриптов"
-printf "${ORANGE}${LINE}${RESET}\n\n"
+printf "%s\n\n" "${ORANGE}${LINE}${RESET}"
 
 # 4. Автоматическая отправка тестового уведомления
 show_section "Отправка тестового уведомления"
@@ -1282,10 +1275,10 @@ show_section "Настройка подписки"
 
 SUBSCRIPTION_URL=""
 while [ -z "$SUBSCRIPTION_URL" ]; do
-    printf "${BLUE}Введите URL подписки на серверы: ${RESET}"
+    printf "%s" "${BLUE}Введите URL подписки на серверы: ${RESET}"
     read -r SUBSCRIPTION_URL
     if [ -z "$SUBSCRIPTION_URL" ]; then
-        printf "${RED}URL подписки не может быть пустым!${RESET}\n"
+        printf "%s\n" "${RED}URL подписки не может быть пустым!${RESET}"
     fi
 done
 
