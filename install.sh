@@ -5,8 +5,6 @@ set -e
 INSTALL_DIR="/opt/root/scripts"
 CONFIG_DIR="/opt/etc/xray"
 GITHUB_RAW="https://raw.githubusercontent.com/andrchq/xkeen_auto/main"
-USE_DIALOG=0
-DIALOG_CMD=""
 CONFIGS_INSTALLED=0
 SERVER_ACTIVATED=0
 
@@ -21,39 +19,6 @@ ORANGE="\033[38;5;214m"
 CYAN="\033[96m"
 
 LINE="─────────────────────────────────────────────────"
-
-check_and_install_whiptail() {
-    if command -v whiptail >/dev/null 2>&1; then
-        DIALOG_CMD="whiptail"
-        USE_DIALOG=1
-        return 0
-    fi
-    
-    if command -v dialog >/dev/null 2>&1; then
-        DIALOG_CMD="dialog"
-        USE_DIALOG=1
-        return 0
-    fi
-    
-    echo ""
-    printf "${YELLOW}⚡ Устанавливаю whiptail для графического интерфейса...${RESET}\n"
-    echo ""
-    
-    if command -v opkg >/dev/null 2>&1; then
-        opkg update >/dev/null 2>&1
-        if opkg install whiptail >/dev/null 2>&1; then
-            DIALOG_CMD="whiptail"
-            USE_DIALOG=1
-            printf "${GREEN}✓ whiptail установлен${RESET}\n"
-            sleep 1
-            # Продолжаем выполнение с уже установленным whiptail
-            # (перезапуск не нужен, переменные уже установлены)
-        else
-            printf "${YELLOW}⚠ Не удалось установить whiptail, продолжаю в текстовом режиме${RESET}\n"
-            sleep 2
-        fi
-    fi
-}
 
 show_header() {
     clear
@@ -92,79 +57,11 @@ error() {
     exit 1
 }
 
-dialog_msgbox() {
-    TITLE="$1"
-    MSG="$2"
-    if [ "$USE_DIALOG" -eq 1 ]; then
-        $DIALOG_CMD --title "простовпн" --msgbox "$MSG" 15 70
-    else
-        show_header
-        show_section "$TITLE"
-        echo "$MSG"
-        printf "${ORANGE}${LINE}${RESET}\n"
-        printf "${YELLOW}Нажмите Enter для продолжения...${RESET}"
-        read -r dummy
-    fi
-}
-
-dialog_yesno() {
-    TITLE="$1"
-    MSG="$2"
-    if [ "$USE_DIALOG" -eq 1 ]; then
-        $DIALOG_CMD --title "простовпн" --yesno "$MSG" 15 70
-        return $?
-    else
-        show_header
-        show_section "$TITLE"
-        echo "$MSG"
-        printf "${ORANGE}${LINE}${RESET}\n"
-        printf "${BLUE}Ваш выбор (y/n): ${RESET}"
-        read -r answer
-        [ "$answer" = "y" ] || [ "$answer" = "Y" ]
-        return $?
-    fi
-}
-
-dialog_inputbox() {
-    TITLE="$1"
-    MSG="$2"
-    DEFAULT="$3"
-    if [ "$USE_DIALOG" -eq 1 ]; then
-        RESULT=$($DIALOG_CMD --title "простовпн" --inputbox "$MSG" 15 70 "$DEFAULT" 3>&1 1>&2 2>&3)
-        echo "$RESULT"
-    else
-        show_header
-        show_section "$TITLE"
-        echo "$MSG"
-        printf "${ORANGE}${LINE}${RESET}\n"
-        printf "${BLUE}> ${RESET}"
-        read -r result
-        echo "$result"
-    fi
-}
-
-dialog_menu() {
-    TITLE="$1"
-    MSG="$2"
-    shift 2
-    if [ "$USE_DIALOG" -eq 1 ]; then
-        RESULT=$($DIALOG_CMD --title "простовпн" --menu "$MSG" 20 70 10 "$@" 3>&1 1>&2 2>&3)
-        echo "$RESULT"
-    else
-        show_header
-        show_section "$TITLE"
-        echo "$MSG"
-        printf "${ORANGE}${LINE}${RESET}\n"
-        i=1
-        while [ $# -gt 0 ]; do
-            printf "${BLUE}  $1)${RESET} $2\n"
-            shift 2
-        done
-        printf "${ORANGE}${LINE}${RESET}\n"
-        printf "${BLUE}Выберите вариант: ${RESET}"
-        read -r result
-        echo "$result"
-    fi
+read_input() {
+    PROMPT="$1"
+    printf "${BLUE}${PROMPT}${RESET}"
+    read -r result
+    echo "$result"
 }
 
 create_prosto_command() {
@@ -1003,8 +900,8 @@ while true; do
                 printf "${BLUE}Выполнить синхронизацию сейчас? (y/n): ${RESET}"
                 read -r dosync
                 if [ "$dosync" = "y" ] || [ "$dosync" = "Y" ]; then
-                    $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
-                fi
+                $SCRIPT_DIR/xkeen_rotate.sh --sync-url="$url"
+            fi
             else
                 printf "${YELLOW}URL не введён, настройка отменена.${RESET}\n"
             fi
@@ -1104,8 +1001,6 @@ EOFPROSTO
     
     export PATH="/opt/bin:$PATH"
 }
-
-check_and_install_whiptail
 
 show_header
 show_section "Установка системы"
@@ -1252,19 +1147,18 @@ printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n
 printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 countdown 3
 
-if command -v xkeen >/dev/null 2>&1 && dialog_yesno "Рекомендуемые настройки Xray" "Установить оптимизированные конфигурации inbound и routing?
-
-Преимущества:
-✓ Блокировка рекламы и аналитики
-✓ Умная маршрутизация (RU напрямую, заблокированное через прокси)
-✓ Оптимизация для Telegram, Discord, Google, ChatGPT
-✓ Блокировка QUIC для стабильности
-✓ BitTorrent напрямую (ЗАПРЕЩЕНО использовать через прокси)
-
-Существующие файлы будут заменены."; then
-    
+# 1. Установка конфигураций Xray без вопроса
+if command -v xkeen >/dev/null 2>&1; then
     show_header
     show_section "Установка конфигураций Xray"
+    
+    printf "${GRAY}Будут установлены:${RESET}\n"
+    printf "  ${CYAN}• Блокировка рекламы и аналитики${RESET}\n"
+    printf "  ${CYAN}• Умная маршрутизация (RU напрямую, заблокированное через прокси)${RESET}\n"
+    printf "  ${CYAN}• Оптимизация для Telegram, Discord, Google, ChatGPT${RESET}\n"
+    printf "  ${CYAN}• Блокировка QUIC для стабильности${RESET}\n"
+    printf "  ${CYAN}• BitTorrent напрямую (ЗАПРЕЩЕНО использовать через прокси)${RESET}\n"
+    printf "${ORANGE}${LINE}${RESET}\n\n"
     
     BACKUP_SUFFIX=$(date +%s)
     
@@ -1293,257 +1187,205 @@ if command -v xkeen >/dev/null 2>&1 && dialog_yesno "Рекомендуемые 
     printf "${GREEN}✓ Конфигурации inbound и routing установлены${RESET}\n"
     printf "${GRAY}   Перезапуск Xray будет выполнен после настройки подписки${RESET}\n"
     CONFIGS_INSTALLED=1
-    countdown 5
-else
-    show_header
-    show_section "Конфигурации пропущены"
-    log "Пропущено (текущие конфигурации сохранены)"
-    sleep 1
+    countdown 3
 fi
 
-if dialog_yesno "Настройка Telegram уведомлений" "Для получения ID топика напишите администратору в @prsta_helpbot
+# 2. Обязательная настройка Telegram
+show_header
+show_section "Настройка Telegram уведомлений"
+printf "${GRAY}Для получения ID топика напишите администратору в @prsta_helpbot${RESET}\n"
+printf "${GRAY}Администратор предоставит вам индивидуальный ID топика для получения уведомлений${RESET}\n"
+printf "${ORANGE}${LINE}${RESET}\n\n"
 
-Администратор предоставит вам индивидуальный ID топика для получения уведомлений о состоянии сервера.
-
-Хотите настроить Telegram сейчас?"; then
-    
-    TG_TOPIC_ID=$(dialog_inputbox "ID топика" "Введите ID топика (получили у администратора @prsta_helpbot):" "")
-    
-    if [ -n "$TG_TOPIC_ID" ]; then
-        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_rotate.sh"
-        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/network_watchdog.sh"
-        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/startup_notify.sh"
-        sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_restart.sh"
-        
-        show_header
-        show_section "Telegram настроен"
-        log "✓ Telegram настроен для всех скриптов"
-        countdown 3
-        
-        if dialog_yesno "Тестовое уведомление" "Отправить тестовое уведомление в Telegram для проверки настроек?"; then
-            show_header
-            show_section "Отправка тестового уведомления"
-            log "Отправляю тестовое уведомление..."
-            cd "$INSTALL_DIR"
-            ./xkeen_rotate.sh --test-notify
-            countdown 5
-        fi
+TG_TOPIC_ID=""
+while [ -z "$TG_TOPIC_ID" ]; do
+    TG_TOPIC_ID=$(read_input "Введите ID топика Telegram: ")
+    if [ -z "$TG_TOPIC_ID" ]; then
+        printf "${RED}ID топика не может быть пустым!${RESET}\n"
     fi
+done
+
+sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_rotate.sh"
+sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/network_watchdog.sh"
+sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/startup_notify.sh"
+sed -i "s|TG_TOPIC_ID=\".*\"|TG_TOPIC_ID=\"$TG_TOPIC_ID\"|" "$INSTALL_DIR/xkeen_restart.sh"
+
+log "✓ Telegram настроен для всех скриптов"
+printf "${ORANGE}${LINE}${RESET}\n\n"
+
+# 4. Автоматическая отправка тестового уведомления
+show_section "Отправка тестового уведомления"
+log "Отправляю тестовое уведомление..."
+cd "$INSTALL_DIR"
+if ./xkeen_rotate.sh --test-notify; then
+    printf "${GREEN}✓ Тестовое уведомление отправлено успешно${RESET}\n"
 else
-    show_header
-    show_section "Telegram настройка пропущена"
-    log "Пропущено (можно настроить позже: prosto edit)"
-    sleep 1
+    printf "${RED}✗ Ошибка отправки тестового уведомления${RESET}\n"
+    printf "${YELLOW}Проверьте правильность ID топика${RESET}\n"
 fi
+printf "${ORANGE}${LINE}${RESET}\n"
+countdown 3
 
+# 5. Обязательный ввод URL подписки
 SUBSCRIPTION_FILE="$INSTALL_DIR/.subscription_url"
-SUBSCRIPTION_URL=$(dialog_inputbox "Настройка подписки" "Введите URL подписки на серверы (или оставьте пустым для настройки позже):" "")
+show_header
+show_section "Настройка подписки"
 
-if [ -n "$SUBSCRIPTION_URL" ]; then
-    # Сохраняем URL подписки для будущего использования
-    echo "$SUBSCRIPTION_URL" > "$SUBSCRIPTION_FILE"
-    log "URL подписки сохранён в $SUBSCRIPTION_FILE"
+SUBSCRIPTION_URL=""
+while [ -z "$SUBSCRIPTION_URL" ]; do
+    SUBSCRIPTION_URL=$(read_input "Введите URL подписки на серверы: ")
+    if [ -z "$SUBSCRIPTION_URL" ]; then
+        printf "${RED}URL подписки не может быть пустым!${RESET}\n"
+    fi
+done
+
+# Сохраняем URL подписки для будущего использования
+echo "$SUBSCRIPTION_URL" > "$SUBSCRIPTION_FILE"
+log "URL подписки сохранён в $SUBSCRIPTION_FILE"
+
+show_section "Загрузка серверов из подписки"
+log "Загружаю серверы из подписки..."
+
+cd "$INSTALL_DIR"
+if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
+    log "✓ Серверы загружены"
+    countdown 3
     
-    show_header
-    show_section "Загрузка серверов из подписки"
-    log "Загружаю серверы из подписки..."
+    show_section "Доступные серверы"
+    ./xkeen_rotate.sh --status
     
-    cd "$INSTALL_DIR"
-    if ./xkeen_sync.sh "$SUBSCRIPTION_URL"; then
-        log "✓ Серверы загружены"
-        countdown 5
+    countdown 3
+    
+    # 6. Обязательная активация сервера с лучшим ping
+    show_section "Активация сервера"
+    log "Выбираю сервер с наименьшим ping..."
+    printf "${BLUE}Измерение ping до всех серверов...${RESET}\n"
+    echo ""
+    ACTIVATE_RESULT=0
+    ./xkeen_rotate.sh --force --verbose || ACTIVATE_RESULT=$?
+    
+    if [ $ACTIVATE_RESULT -eq 0 ]; then
+        log "✓ Сервер активирован"
+        SERVER_ACTIVATED=1
         
-        show_header
-        show_section "Доступные серверы"
-        ./xkeen_rotate.sh --status
+        # Отправляем уведомление о первой активации
+        ACTIVATED_CC=""
+        ACTIVATED_TGT=""
+        [ -f "/tmp/xkeen_current_country" ] && ACTIVATED_CC=$(cat "/tmp/xkeen_current_country" 2>/dev/null)
+        [ -f "$CONFIG_DIR/configs/04_outbounds.target" ] && ACTIVATED_TGT=$(head -n1 "$CONFIG_DIR/configs/04_outbounds.target" 2>/dev/null | tr -d '\r\n')
         
-        countdown 5
-        
-        if dialog_yesno "Активация сервера" "Активировать сервер с лучшим ping сейчас?"; then
-            show_header
-            show_section "Активация сервера"
-            log "Выбираю сервер с наименьшим ping..."
-            printf "${BLUE}Измерение ping до всех серверов...${RESET}\n"
-            echo ""
-            ACTIVATE_RESULT=0
-            ./xkeen_rotate.sh --force --verbose || ACTIVATE_RESULT=$?
-            
-            if [ $ACTIVATE_RESULT -eq 0 ]; then
-            log "✓ Сервер активирован"
-            SERVER_ACTIVATED=1
-                
-                # Отправляем уведомление о первой активации
-                ACTIVATED_CC=""
-                ACTIVATED_TGT=""
-                [ -f "/tmp/xkeen_current_country" ] && ACTIVATED_CC=$(cat "/tmp/xkeen_current_country" 2>/dev/null)
-                [ -f "$CONFIG_DIR/configs/04_outbounds.target" ] && ACTIVATED_TGT=$(head -n1 "$CONFIG_DIR/configs/04_outbounds.target" 2>/dev/null | tr -d '\r\n')
-                
-                if [ -n "$TG_TOPIC_ID" ] && [ -n "$ACTIVATED_CC" ]; then
-                    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-                    NOTIFY_MSG="🟩 <b>ПЕРВИЧНАЯ НАСТРОЙКА ЗАВЕРШЕНА</b>
+        if [ -n "$TG_TOPIC_ID" ] && [ -n "$ACTIVATED_CC" ]; then
+            TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+            NOTIFY_MSG="🟩 <b>ПЕРВИЧНАЯ НАСТРОЙКА ЗАВЕРШЕНА</b>
 
 <b>Система успешно настроена!</b>
 Активирован сервер: $ACTIVATED_CC ($ACTIVATED_TGT)
 
 ⏰ $TIMESTAMP"
-                    curl -s -X POST "https://api.telegram.org/bot7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U/sendMessage" \
-                        -d "chat_id=-1002517339071" \
-                        -d "message_thread_id=$TG_TOPIC_ID" \
-                        -d "text=$NOTIFY_MSG" \
-                        -d "parse_mode=HTML" >/dev/null 2>&1
-                    log "Уведомление о первой активации отправлено"
-                fi
-            else
-                log "⚠ Не удалось активировать сервер"
-            fi
-            countdown 5
+            curl -s -X POST "https://api.telegram.org/bot7305187909:AAHGkLCVpGIlg70AxWT2auyjOrhoAJkof1U/sendMessage" \
+                -d "chat_id=-1002517339071" \
+                -d "message_thread_id=$TG_TOPIC_ID" \
+                -d "text=$NOTIFY_MSG" \
+                -d "parse_mode=HTML" >/dev/null 2>&1
+            log "Уведомление о первой активации отправлено"
+        fi
+    else
+        log "⚠ Не удалось активировать сервер"
+    fi
+    countdown 3
+    
+    if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
+        show_section "Перезапуск Xray"
+        printf "${BLUE}Все конфигурации установлены. Перезапускаю Xray...${RESET}\n"
+        echo ""
+        
+        printf "${GRAY}Ожидание завершения перезапуска (10 секунд)...${RESET}\n"
+        
+        RESTART_LOG="/tmp/xray_restart_$$.log"
+        xkeen -restart > "$RESTART_LOG" 2>&1
+        
+        if [ -f "$RESTART_LOG" ]; then
+            echo ""
+            cat "$RESTART_LOG"
+            echo ""
             
-            if [ "$CONFIGS_INSTALLED" -eq 1 ] && [ -f "$CONFIG_DIR/configs/04_outbounds.json" ]; then
-                show_header
-                show_section "Перезапуск Xray"
-                printf "${BLUE}Все конфигурации установлены. Перезапускаю Xray...${RESET}\n"
-                echo ""
-                
-                printf "${GRAY}Ожидание завершения перезапуска (10 секунд)...${RESET}\n"
-                
-                RESTART_LOG="/tmp/xray_restart_$$.log"
-                xkeen -restart > "$RESTART_LOG" 2>&1
-                
-                if [ -f "$RESTART_LOG" ]; then
-                    echo ""
-                    cat "$RESTART_LOG"
-                    echo ""
-                    
-                    if cat "$RESTART_LOG" | grep -q "запущен"; then
-                        printf "${GREEN}${BOLD}✓ Xray успешно перезапущен! Все конфигурации применены.${RESET}\n"
-                        log "Xray перезапущен успешно с новыми конфигурациями"
-                    else
-                        printf "${YELLOW}⚠ Не удалось подтвердить успешный запуск${RESET}\n"
-                    fi
-                    rm -f "$RESTART_LOG"
-                else
-                    printf "${YELLOW}⚠ Не удалось получить вывод команды${RESET}\n"
-                fi
-                countdown 5
+            if cat "$RESTART_LOG" | grep -q "запущен"; then
+                printf "${GREEN}${BOLD}✓ Xray успешно перезапущен! Все конфигурации применены.${RESET}\n"
+                log "Xray перезапущен успешно с новыми конфигурациями"
+            else
+                printf "${YELLOW}⚠ Не удалось подтвердить успешный запуск${RESET}\n"
             fi
+            rm -f "$RESTART_LOG"
+        else
+            printf "${YELLOW}⚠ Не удалось получить вывод команды${RESET}\n"
         fi
-    else
-        show_header
-        show_section "Ошибка загрузки подписки"
-        printf "${YELLOW}⚠ Не удалось загрузить подписку (настройте позже командой: prosto)${RESET}\n"
-        sleep 2
-    fi
-fi
-
-if dialog_yesno "Настройка автоматической ротации" "Настроить автоматическую проверку доступности серверов через cron?"; then
-    
-    CRON_CHOICE=$(dialog_menu "Интервал проверки" "Выберите интервал проверки доступности серверов:" \
-        "1" "Каждые 2 минуты (рекомендуется)" \
-        "2" "Каждые 5 минут" \
-        "3" "Каждые 10 минут")
-    
-    case "$CRON_CHOICE" in
-        1) CRON_SCHEDULE="*/2 * * * *" ;;
-        2) CRON_SCHEDULE="*/5 * * * *" ;;
-        3) CRON_SCHEDULE="*/10 * * * *" ;;
-        *) CRON_SCHEDULE="*/5 * * * *" ;;
-    esac
-    
-    SETUP_AUTOSTART=0
-    if dialog_yesno "Автозапуск" "Настроить автоматический выбор сервера после перезагрузки роутера?
-
-Скрипт будет запускаться через 2 минуты после загрузки."; then
-        SETUP_AUTOSTART=1
-    fi
-    
-    TEMP_CRON=$(mktemp)
-    crontab -l > "$TEMP_CRON" 2>/dev/null || true
-    grep -v "xkeen_rotate.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
-    mv "$TEMP_CRON.new" "$TEMP_CRON"
-    
-    echo "" >> "$TEMP_CRON"
-    echo "$CRON_SCHEDULE $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
-    
-    # Ежедневная синхронизация подписки в 3:00 (читает URL из файла)
-    echo "0 3 * * * [ -f $INSTALL_DIR/.subscription_url ] && $INSTALL_DIR/xkeen_rotate.sh --sync-url=\"\$(cat $INSTALL_DIR/.subscription_url)\" >/dev/null 2>&1" >> "$TEMP_CRON"
-    
-    if [ "$SETUP_AUTOSTART" -eq 1 ]; then
-        echo "@reboot sleep 120 && $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
-    fi
-    
-    crontab "$TEMP_CRON"
-    rm -f "$TEMP_CRON"
-    /etc/init.d/cron restart >/dev/null 2>&1 || true
-    
-    show_header
-    show_section "Настройка завершена"
-    log "✓ Автоматическая ротация настроена"
-    if [ "$SETUP_AUTOSTART" -eq 1 ]; then
-        log "✓ Автозапуск настроен через cron (@reboot)"
-    fi
-    countdown 5
-    
-    if dialog_yesno "Система мониторинга и автозапуска" "Настроить полную систему автоматизации?
-
-Система включает:
-✓ Автозапуск Xray при загрузке роутера (S99xkeenstart)
-✓ Автоматический выбор рабочего сервера
-✓ Уведомления о загрузке системы (S99startup_notify)
-✓ Мониторинг интернета каждые 5 минут
-✓ Автовосстановление при проблемах
-✓ Перезагрузка роутера при критических сбоях
-
-Рекомендуется включить для полностью автономной работы."; then
-        
-        show_header
-        show_section "Настройка системы автоматизации"
-        
-        # Включаем init-скрипты автозапуска
-        if [ -f "$INIT_DIR/S99xkeenstart" ]; then
-            log "✓ Автозапуск Xray включен (S99xkeenstart)"
-        fi
-        
-        if [ -f "$INIT_DIR/S99startup_notify" ]; then
-            log "✓ Уведомления о старте включены (S99startup_notify)"
-        fi
-        
-        # Настраиваем cron для мониторинга
-        TEMP_CRON=$(mktemp)
-        crontab -l > "$TEMP_CRON" 2>/dev/null || true
-        grep -v "network_watchdog.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
-        mv "$TEMP_CRON.new" "$TEMP_CRON"
-        
-        echo "" >> "$TEMP_CRON"
-        echo "# Мониторинг интернета и автовосстановление" >> "$TEMP_CRON"
-        echo "*/5 * * * * $INSTALL_DIR/network_watchdog.sh >/dev/null 2>&1" >> "$TEMP_CRON"
-        
-        crontab "$TEMP_CRON"
-        rm -f "$TEMP_CRON"
-        /etc/init.d/cron restart >/dev/null 2>&1 || true
-        
-        log "✓ Мониторинг сети настроен (проверка каждые 5 минут)"
-        log "✓ Полная система автоматизации активирована"
         countdown 3
-    else
-        show_header
-        show_section "Автоматизация пропущена"
-        log "Пропущено (можно настроить позже вручную)"
-        log "Init-скрипты установлены но не активированы"
-        
-        # Отключаем автозапуск в S99xkeenstart
-        if [ -f "$INIT_DIR/S99xkeenstart" ]; then
-            sed -i 's/AUTOSTART="on"/AUTOSTART="off"/' "$INIT_DIR/S99xkeenstart"
-            log "✓ Автозапуск Xray отключен"
-        fi
-        
-        sleep 2
     fi
 else
-    show_header
-    show_section "Cron настройка пропущена"
-    log "Пропущено (можно настроить позже: crontab -e)"
-    sleep 1
+    show_section "Ошибка загрузки подписки"
+    printf "${RED}⚠ Не удалось загрузить подписку${RESET}\n"
+    printf "${YELLOW}Проверьте правильность URL и повторите установку${RESET}\n"
+    exit 1
 fi
+
+# 7-10. Автоматическая настройка cron и мониторинга
+show_section "Настройка автоматической ротации"
+log "Настраиваю автоматическую проверку доступности серверов..."
+
+CRON_SCHEDULE="*/2 * * * *"  # Каждые 2 минуты
+
+TEMP_CRON=$(mktemp)
+crontab -l > "$TEMP_CRON" 2>/dev/null || true
+grep -v "xkeen_rotate.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
+mv "$TEMP_CRON.new" "$TEMP_CRON"
+
+echo "" >> "$TEMP_CRON"
+echo "# Автоматическая ротация серверов" >> "$TEMP_CRON"
+echo "$CRON_SCHEDULE $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
+
+# Ежедневная синхронизация подписки в 3:00
+echo "0 3 * * * [ -f $INSTALL_DIR/.subscription_url ] && $INSTALL_DIR/xkeen_rotate.sh --sync-url=\"\$(cat $INSTALL_DIR/.subscription_url)\" >/dev/null 2>&1" >> "$TEMP_CRON"
+
+# 9. Автозапуск - ДА
+echo "@reboot sleep 120 && $INSTALL_DIR/xkeen_rotate.sh >/dev/null 2>&1" >> "$TEMP_CRON"
+
+crontab "$TEMP_CRON"
+rm -f "$TEMP_CRON"
+/etc/init.d/cron restart >/dev/null 2>&1 || true
+
+log "✓ Автоматическая ротация настроена (интервал: 2 минуты)"
+log "✓ Автозапуск настроен через cron (@reboot)"
+countdown 2
+
+# 10. Система мониторинга - ДА
+show_section "Настройка системы автоматизации"
+
+# Включаем init-скрипты автозапуска
+if [ -f "$INIT_DIR/S99xkeenstart" ]; then
+    log "✓ Автозапуск Xray включен (S99xkeenstart)"
+fi
+
+if [ -f "$INIT_DIR/S99startup_notify" ]; then
+    log "✓ Уведомления о старте включены (S99startup_notify)"
+fi
+
+# Настраиваем cron для мониторинга
+TEMP_CRON=$(mktemp)
+crontab -l > "$TEMP_CRON" 2>/dev/null || true
+grep -v "network_watchdog.sh" "$TEMP_CRON" > "$TEMP_CRON.new" 2>/dev/null || true
+mv "$TEMP_CRON.new" "$TEMP_CRON"
+
+echo "" >> "$TEMP_CRON"
+echo "# Мониторинг интернета и автовосстановление" >> "$TEMP_CRON"
+echo "*/5 * * * * $INSTALL_DIR/network_watchdog.sh >/dev/null 2>&1" >> "$TEMP_CRON"
+
+crontab "$TEMP_CRON"
+rm -f "$TEMP_CRON"
+/etc/init.d/cron restart >/dev/null 2>&1 || true
+
+log "✓ Мониторинг сети настроен (проверка каждые 5 минут)"
+log "✓ Полная система автоматизации активирована"
+countdown 2
 
 # ============ Открытие портов ============
 show_header
@@ -1676,48 +1518,29 @@ else
     sleep 1
 fi
 
-if [ "$USE_DIALOG" -eq 1 ]; then
-    $DIALOG_CMD --title "простовпн" --msgbox "Установка успешно завершена!
+show_header
+show_section "Установка завершена!"
+log "✓ Установка успешно завершена!"
 
-Основные команды:
-• prosto                   - Интерактивное меню
-• prosto status            - Показать статус серверов
-• prosto force             - Принудительная ротация
-• prosto test              - Тест Telegram уведомлений
-• prosto update            - Проверить обновления
+printf "\n${CYAN}Основные команды:${RESET}\n"
+printf "  ${BLUE}prosto${RESET}                   - Интерактивное меню\n"
+printf "  ${BLUE}prosto status${RESET}            - Показать статус серверов\n"
+printf "  ${BLUE}prosto force${RESET}             - Принудительная ротация\n"
+printf "  ${BLUE}prosto test${RESET}              - Тест Telegram уведомлений\n"
+printf "  ${BLUE}prosto update${RESET}            - Проверить обновления\n"
 
-Система автоматической ротации активна!
+printf "\n${ORANGE}${LINE}${RESET}\n\n"
+printf "${GREEN}Система автоматической ротации активна!${RESET}\n"
+printf "\n${ORANGE}${LINE}${RESET}\n"
+printf "${BLUE}Покупка:${RESET} https://t.me/prstabot\n"
+printf "${BLUE}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
+printf "${ORANGE}${LINE}${RESET}\n\n"
 
-Покупка: https://t.me/prstabot
-Поддержка: https://t.me/prsta_helpbot" 20 60
-else
-    show_header
-    show_section "Установка завершена!"
-    log "✓ Установка успешно завершена!"
-    
-    printf "\n${CYAN}Основные команды:${RESET}\n"
-    printf "  ${BLUE}prosto${RESET}                   - Интерактивное меню\n"
-    printf "  ${BLUE}prosto status${RESET}            - Показать статус серверов\n"
-    printf "  ${BLUE}prosto force${RESET}             - Принудительная ротация\n"
-    printf "  ${BLUE}prosto test${RESET}              - Тест Telegram уведомлений\n"
-    printf "  ${BLUE}prosto update${RESET}            - Проверить обновления\n"
-    
-    printf "\n${ORANGE}${LINE}${RESET}\n\n"
-    printf "${GREEN}Система автоматической ротации активна!${RESET}\n"
-    printf "\n${ORANGE}${LINE}${RESET}\n"
-    printf "${BLUE}Покупка:${RESET} https://t.me/prstabot\n"
-    printf "${BLUE}Поддержка:${RESET} https://t.me/prsta_helpbot\n"
-    printf "${ORANGE}${LINE}${RESET}\n\n"
-fi
-
-if dialog_yesno "Удаление установщика" "Удалить установочный скрипт?"; then
-    if [ -f "$0" ] && [ "$0" != "/dev/stdin" ]; then
-        INSTALLER_PATH="$0"
-        rm -f "$INSTALLER_PATH"
-        show_header
-        show_section "Установщик удалён"
-        log "✓ Установочный скрипт удалён"
-    fi
+# 11. Автоматическое удаление установщика
+if [ -f "$0" ] && [ "$0" != "/dev/stdin" ]; then
+    INSTALLER_PATH="$0"
+    rm -f "$INSTALLER_PATH"
+    log "✓ Установочный скрипт удалён"
 fi
 
 show_header
