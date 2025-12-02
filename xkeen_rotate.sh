@@ -25,7 +25,7 @@ FAIL_COUNTERS_FILE="/opt/root/scripts/.fail_counters"  # счётчики пад
 FAVORITE_COUNTRY_FILE="/opt/root/scripts/.favorite_country"  # избранная страна
 FORCED_COUNTRY_FILE="/opt/root/scripts/.forced_country"  # принудительно выбранная страна
 FORCED_COUNTRY_TIMEOUT=300                          # таймаут принудительного выбора (5 минут)
-MAX_PING_MS=100                                     # макс. ping для обычных серверов
+# MAX_PING_MS больше не используется - все серверы доступны независимо от ping
 # ---------- Конец настроек ----------
 
 FORCE_ROTATE=0
@@ -232,7 +232,7 @@ refresh_forced_country() {
 # ============ Получение кандидатов ============
 
 # Получить список серверов отсортированных по (ping + fail_count*10)
-# Серверы с ping > MAX_PING_MS исключаются (кроме избранной)
+# Все серверы доступны независимо от ping (ограничения по ping убраны)
 get_sorted_candidates() {
     TEMP_PING_FILE="/tmp/xkeen_ping_$$"
     : > "$TEMP_PING_FILE"
@@ -263,10 +263,7 @@ get_sorted_candidates() {
             continue
         fi
         
-        # Пропускаем серверы с ping > MAX_PING_MS
-        if [ "$PING_MS" -gt "$MAX_PING_MS" ]; then
-            continue
-        fi
+        # Все серверы доступны независимо от ping
         
         # Получаем счётчик падений
         FAIL_COUNT=$(get_fail_count "$CC")
@@ -515,48 +512,43 @@ cleanup_backups() {
 }
 
 show_status() {
-    echo "=== Статус нод xkeen ==="
-    echo ""
-    
-    # Показываем избранную и принудительную страну
+    # Показываем избранную и принудительную страну (только если установлены)
     FAVORITE=$(get_favorite_country)
     FORCED=$(get_forced_country)
-    [ -n "$FAVORITE" ] && echo "★ Избранная страна: $FAVORITE"
-    [ -n "$FORCED" ] && echo "⚡ Принудительно выбрана: $FORCED"
-    [ -n "$FAVORITE" ] || [ -n "$FORCED" ] && echo ""
     
     CURRENT_CC=""
     [ -f "$STATE_FILE" ] && CURRENT_CC="$(cat "$STATE_FILE" 2>/dev/null)"
-    if [ -f "$ACTIVE_TARGET" ]; then
+    
+    # Показываем активную страну
+    if [ -n "$CURRENT_CC" ] && [ -f "$ACTIVE_TARGET" ]; then
         CUR_TGT="$(head -n1 "$ACTIVE_TARGET" | tr -d '\r\n')"
-        CUR_PING=$(measure_ping "$CUR_TGT")
-        printf "Активная: $CURRENT_CC - "
         if health_tcp "$CUR_TGT"; then
-            if [ "$CUR_PING" = "9999" ]; then
-            echo "✓ ДОСТУПНА"
-            else
-                echo "✓ ДОСТУПНА [${CUR_PING}ms]"
-            fi
+            echo "Активная: $CURRENT_CC - ✓ ДОСТУПНА"
         else
-            echo "✗ НЕДОСТУПНА"
+            echo "Активная: $CURRENT_CC - ✗ НЕДОСТУПНА"
         fi
     else
         echo "Активная: не настроена"
     fi
     echo ""
-    echo "Доступные ноды (ping ≤${MAX_PING_MS}ms, сортировка по надёжности):"
     
-    # Собираем данные с ping и сортируем
+    # Показываем избранную и принудительную страну (только если установлены)
+    [ -n "$FAVORITE" ] && echo "★ Избранная страна: $FAVORITE"
+    [ -n "$FORCED" ] && echo "⚡ Принудительно выбрана: $FORCED"
+    [ -n "$FAVORITE" ] || [ -n "$FORCED" ] && echo ""
+    
+    # Собираем список доступных стран
     TEMP_STATUS="/tmp/xkeen_status_$$"
     : > "$TEMP_STATUS"
     
     CANDIDATES=$(ls "${AVAILABLE_DIR}"/04_outbounds_*.json 2>/dev/null)
     if [ -z "$CANDIDATES" ]; then
-        echo "  Нет доступных конфигураций"
+        echo "Найдено стран: 0"
         rm -f "$TEMP_STATUS"
-        return
+        exit 0
     fi
     
+    AVAILABLE_COUNT=0
     for cand in $CANDIDATES; do
         [ -f "$cand" ] || continue
         CC=$(basename "$cand" | sed -n 's/^04_outbounds_\([^.]*\)\.json$/\1/p')
@@ -573,36 +565,24 @@ show_status() {
             continue
         fi
         PING_MS=$(measure_ping "$TGT")
-        FAIL_COUNT=$(get_fail_count "$CC")
         if health_tcp "$TGT"; then
-            echo "$PING_MS $CC available $FAIL_COUNT" >> "$TEMP_STATUS"
-        else
-            echo "9999 $CC unavailable $FAIL_COUNT" >> "$TEMP_STATUS"
+            echo "$PING_MS $CC" >> "$TEMP_STATUS"
+            AVAILABLE_COUNT=$((AVAILABLE_COUNT + 1))
         fi
     done
     
-    # Выводим отсортированный список (без IP/доменов)
-    sort -n "$TEMP_STATUS" | while read -r ping cc status fail_count; do
-        MARKS=""
-        [ "$cc" = "$FAVORITE" ] && MARKS="${MARKS}★"
-        [ "$cc" = "$FORCED" ] && MARKS="${MARKS}⚡"
-        [ -n "$MARKS" ] && MARKS=" ${MARKS}"
-        
-        FAIL_INFO=""
-        [ "$fail_count" -gt 0 ] && FAIL_INFO=" [падений: $fail_count]"
-        
-        if [ "$status" = "available" ]; then
-            if [ "$ping" = "9999" ]; then
-                echo "  $cc${MARKS} - ✓ доступна${FAIL_INFO}"
-            elif [ "$ping" -gt "$MAX_PING_MS" ] && [ "$cc" != "$FAVORITE" ]; then
-                echo "  $cc${MARKS} - ✓ доступна [${ping}ms] (исключена, ping>${MAX_PING_MS})${FAIL_INFO}"
-        else
-                echo "  $cc${MARKS} - ✓ доступна [${ping}ms]${FAIL_INFO}"
-            fi
-        else
-            echo "  $cc${MARKS} - ✗ недоступна${FAIL_INFO}"
-        fi
-    done
+    # Выводим список доступных стран (простой формат)
+    echo "Доступные страны:"
+    if [ "$AVAILABLE_COUNT" -eq 0 ]; then
+        echo "  Нет доступных стран"
+    else
+        sort -n "$TEMP_STATUS" | while read -r ping cc; do
+            MARKS=""
+            [ "$cc" = "$FAVORITE" ] && MARKS="${MARKS} ★"
+            [ "$cc" = "$FORCED" ] && MARKS="${MARKS} ⚡"
+            echo "  - $cc${MARKS}"
+        done
+    fi
     
     rm -f "$TEMP_STATUS"
     exit 0
