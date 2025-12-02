@@ -106,10 +106,13 @@ safe_create_file() {
     FILE_PATH="$1"
     CONTENT="$2"
     
-    # Если файл существует, создаём бэкап
+    # Если файл существует, создаём бэкап в /opt/etc/xray/backups
     if [ -f "$FILE_PATH" ]; then
-        BACKUP_PATH="${FILE_PATH}.bak.$(date +%s)"
-        cp "$FILE_PATH" "$BACKUP_PATH" 2>/dev/null && log "Создан backup: $(basename "$BACKUP_PATH")"
+        BACKUP_DIR="/opt/etc/xray/backups"
+        mkdir -p "$BACKUP_DIR"
+        BACKUP_FILENAME="$(basename "$FILE_PATH").bak.$(date +%s)"
+        BACKUP_PATH="$BACKUP_DIR/$BACKUP_FILENAME"
+        cp "$FILE_PATH" "$BACKUP_PATH" 2>/dev/null && log "Создан backup: $BACKUP_FILENAME"
     fi
     
     # Создаём/заменяем файл
@@ -121,10 +124,13 @@ safe_download_file() {
     URL="$1"
     FILE_PATH="$2"
     
-    # Если файл существует, создаём бэкап
+    # Если файл существует, создаём бэкап в /opt/etc/xray/backups
     if [ -f "$FILE_PATH" ]; then
-        BACKUP_PATH="${FILE_PATH}.bak.$(date +%s)"
-        cp "$FILE_PATH" "$BACKUP_PATH" 2>/dev/null && log "Создан backup: $(basename "$BACKUP_PATH")"
+        BACKUP_DIR="/opt/etc/xray/backups"
+        mkdir -p "$BACKUP_DIR"
+        BACKUP_FILENAME="$(basename "$FILE_PATH").bak.$(date +%s)"
+        BACKUP_PATH="$BACKUP_DIR/$BACKUP_FILENAME"
+        cp "$FILE_PATH" "$BACKUP_PATH" 2>/dev/null && log "Создан backup: $BACKUP_FILENAME"
     fi
     
     # Загружаем файл
@@ -1181,8 +1187,11 @@ fi
 if safe_download_file "$GITHUB_RAW/VERSION" "$INSTALL_DIR/.version"; then
     log "✓ Версия: $(cat $INSTALL_DIR/.version)"
 else
-    if [ -f "$INSTALL_DIR/.version" ]; then
-        BACKUP_PATH="${INSTALL_DIR}/.version.bak.$(date +%s)"
+        if [ -f "$INSTALL_DIR/.version" ]; then
+        BACKUP_DIR="/opt/etc/xray/backups"
+        mkdir -p "$BACKUP_DIR"
+        BACKUP_FILENAME=".version.bak.$(date +%s)"
+        BACKUP_PATH="$BACKUP_DIR/$BACKUP_FILENAME"
         cp "$INSTALL_DIR/.version" "$BACKUP_PATH" 2>/dev/null
     fi
     echo "1.0.0" > "$INSTALL_DIR/.version"
@@ -1649,6 +1658,18 @@ else
     log "⚠ xkeen не найден, пропускаю настройку портов"
     sleep 1
 fi
+
+# Очистка технических серверов и лишних файлов перед завершением
+show_header
+show_section "Финальная очистка"
+printf "Удаляю технические серверы и проверяю файлы...\n\n"
+cd "$INSTALL_DIR"
+if sh ./xkeen_rotate.sh --cleanup >/dev/null 2>&1; then
+    log "✓ Очистка завершена"
+else
+    log "⚠ Очистка пропущена (скрипт недоступен)"
+fi
+pause_for_reading 2
 
 show_header
 show_section "Установка завершена!"
