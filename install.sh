@@ -13,20 +13,20 @@ SERVER_ACTIVATED=0
 # Можно изменить значения для каждого этапа отдельно
 # Для отключения таймера установите значение 0
 # Для увеличения времени ожидания увеличьте значение (в секундах)
-TIMER_START=7                    # Начало установки
+TIMER_START=10                    # Начало установки
 TIMER_SCRIPTS_LOADED=5           # После загрузки скриптов
 TIMER_INIT_SCRIPTS=5             # После установки init-скриптов
 TIMER_PERMISSIONS=2              # После установки прав доступа
-TIMER_PROSTO_COMMAND=7           # После установки команды prosto
-TIMER_XRAY_CONFIGS=14             # После установки конфигов Xray
-TIMER_TELEGRAM_TEST=2            # После тестового уведомления Telegram
-TIMER_SUBSCRIPTION_LOAD=6        # После загрузки подписки
+TIMER_PROSTO_COMMAND=10           # После установки команды prosto
+TIMER_XRAY_CONFIGS=15             # После установки конфигов Xray
+TIMER_TELEGRAM_TEST=7            # После тестового уведомления Telegram
+TIMER_SUBSCRIPTION_LOAD=7        # После загрузки подписки
 TIMER_SERVERS_LIST=7             # После показа списка серверов
-TIMER_SERVER_ACTIVATE=5          # После активации сервера
+TIMER_SERVER_ACTIVATE=7          # После активации сервера
 TIMER_XRAY_RESTART=4             # После перезапуска Xray
-TIMER_CRON_SETUP=2               # После настройки cron
-TIMER_MONITORING_SETUP=2         # После настройки мониторинга
-TIMER_PORTS_OPEN=2               # После открытия портов
+TIMER_CRON_SETUP=7               # После настройки cron
+TIMER_MONITORING_SETUP=7         # После настройки мониторинга
+TIMER_PORTS_OPEN=3               # После открытия портов
 # ====================================================
 ESC=$(printf '\033')
 GRAY="${ESC}[90m"
@@ -72,7 +72,7 @@ countdown() {
 pause_for_reading() {
     SECONDS="${1:-0}"
     [ "$SECONDS" -le 0 ] && return
-    printf "${YELLOW}Пара секунд на чтение...${RESET}\n"
+    printf "${YELLOW}Несколько секунд для прочтения...${RESET}\n"
     countdown "$SECONDS"
 }
 
@@ -1251,7 +1251,6 @@ create_prosto_command
 
 log "✓ Команда 'prosto' установлена в /opt/bin"
 printf "${BLUE}   Используйте команду: ${BOLD}prosto${RESET}\n"
-printf "${GRAY}   (если команда не найдена, перезапустите сессию или выполните: export PATH=\"/opt/bin:\$PATH\")${RESET}\n"
 pause_for_reading "$TIMER_PROSTO_COMMAND"
 
 # 1. Установка конфигураций Xray без вопроса
@@ -1700,7 +1699,6 @@ show_header
 printf "${GREEN}${BOLD}✓ Готово!${RESET}\n"
 printf "${ORANGE}${LINE}${RESET}\n\n"
 printf "Используйте команду: ${BLUE}${BOLD}prosto${RESET}\n"
-printf "${GRAY}(Если команда не найдена: export PATH=\"/opt/bin:\$PATH\")${RESET}\n\n"
 printf "Спасибо, что выбрали ${BLUE}${BOLD}простовпн${RESET}.\n"
 printf "Если понадобится помощь или продление подписки:\n"
 printf "• Поддержка: ${GREEN}https://t.me/prsta_helpbot${RESET}\n"
